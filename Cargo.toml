@@ -1,0 +1,15 @@
+[package]
+name = "hawk_backtester"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hawk_backtester"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20.3", features = ["extension-module"] }
+polars = { version = "0.38.3", features = ["lazy", "dtype-date"] }
+pyo3-polars = "0.12.0"
+cloud-storage = "0.10"
+chrono = "0.4.38"
