@@ -1,6 +1,11 @@
-/target
-service_account.json
+# Rust ignores
+/target/
+**/*.rs.bk
+Cargo.lock
+debug/
+rls/
 
+# Python ignores
 __pycache__/
 *.py[cod]
 *$py.class
@@ -25,6 +30,21 @@ wheels/
 .venv
 venv/
 ENV/
+
+# IDE specific
 .idea/
 .vscode/
+*.swp
+*.swo
+
+# Project specific
+service_account.json
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Poetry
+poetry.lock
+dist/
 EOF
