@@ -47,4 +47,8 @@ Thumbs.db
 # Poetry
 poetry.lock
 dist/
+
+# Compiled extensions
+python/hawk_backtester/*.so
+python/hawk_backtester/*.pyd
 EOF

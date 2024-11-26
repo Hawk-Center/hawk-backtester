@@ -48,4 +48,4 @@ def test_portfolio_rebalancing():
     day_weights = model_insights.filter(pl.col("insight_date") == first_date)
     
     # Initialize and test rebalancing
-    assert initialize_backtester(day_prices, day_weights) 
+    assert initialize_backtester(day_prices, day_weights)
