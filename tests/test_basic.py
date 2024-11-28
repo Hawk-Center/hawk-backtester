@@ -5,30 +5,32 @@ def initialize_example_data():
     example_model_state = pl.read_parquet("tests/data/example_model_state.parquet")
     example_model_insights = pl.read_parquet("tests/data/example_insights.parquet")
     
-    # Convert datetime[ns, UTC] to Date for model_state
+    # Convert datetime to DateTime
     example_model_state = example_model_state.with_columns([
-        pl.col("date").cast(pl.Date).alias("date")
+        pl.col("date").cast(pl.Datetime).alias("date")
     ])
     
-    # Convert string to Date for model_insights
+    # Convert insights from wide to long format
+    example_model_insights = example_model_insights.melt(
+        id_vars=["insight_date"],
+        variable_name="ticker",
+        value_name="weight"
+    ).filter(
+        pl.col("ticker") != "insight_date"  # Remove the date column if it got included
+    )
+    
+    # Convert insight_date to DateTime
     example_model_insights = example_model_insights.with_columns([
-        pl.col("insight_date").str.strptime(pl.Date, format="%Y-%m-%d %H:%M:%S").alias("insight_date")
+        pl.col("insight_date").str.strptime(pl.Datetime, format="%Y-%m-%d %H:%M:%S").alias("insight_date")
     ])
     
     # Sort by date
     example_model_state = example_model_state.sort("date")
     example_model_insights = example_model_insights.sort("insight_date")
     
-    # Select only the columns we want
+    # Select model state columns
     example_model_state = example_model_state.select([
-        "date", 
-        "ticker", 
-        "open", 
-        "high", 
-        "low", 
-        "close", 
-        "volume", 
-        "open_interest"
+        "date", "ticker", "open", "high", "low", "close", "volume", "open_interest"
     ])
     
     return example_model_state, example_model_insights
