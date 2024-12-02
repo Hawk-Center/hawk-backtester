@@ -2,6 +2,8 @@
 
 A fast portfolio backtesting engine written in Rust with Python bindings.
 
+map: < portfolio_weights, model_state > --> < log_portfolio_raturns >
+
 ## Installation
 
 ```bash
