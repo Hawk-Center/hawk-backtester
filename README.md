@@ -16,11 +16,11 @@ results = run_backtest(prices_df, weights_df, risk_free_rate)
 
 
 
+## Developer Commands
 ```bash
 cargo install maturin --locked
 ```
 ```bash
 poetry run maturin develop
 poetry run python tests/test_basic.py
-poetry run python tests/test_portfolio.py
 ```
