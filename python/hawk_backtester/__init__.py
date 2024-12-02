@@ -1,3 +1,4 @@
-from .hawk_backtester import initialize_backtester
+from .hawk_backtester import run_backtest
 
-__all__ = ["initialize_backtester"]
+__all__ = ["run_backtest"]
+
