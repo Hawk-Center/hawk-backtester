@@ -52,3 +52,9 @@ dist/
 python/hawk_backtester/*.so
 python/hawk_backtester/*.pyd
 EOF
+
+# Tests and data
+/tests
+/tests/data
+
+.pytest_cache/
