@@ -146,7 +146,7 @@ def prepare_price_data(
 
             match date_type:
                 case pl.Datetime:
-                    # Convert datetime to Unix timestamp in seconds
+                    # Convert datetime to Unix timestamp in seconds (not microseconds)
                     df = df.with_columns(
                         pl.col(date_column).dt.timestamp().cast(pl.Int64).alias(date_column)
                     )
@@ -239,21 +239,20 @@ def prepare_weight_data(
 
             match date_type:
                 case pl.Datetime:
-                    # Convert datetime to unix microseconds considering timezone
+                    # Convert datetime to Unix timestamp in seconds (not microseconds)
                     df = df.with_columns(
-                        (pl.col(date_column).dt.timestamp() * 1_000_000).cast(pl.Int64)
+                        pl.col(date_column).dt.timestamp().cast(pl.Int64)
                     )
                 case pl.Date:
-                    # Convert date to datetime then to unix microseconds
+                    # Convert date to datetime then to Unix timestamp in seconds
                     df = df.with_columns(
-                        pl.col(date_column).cast(pl.Datetime).dt.timestamp().cast(pl.Int64) * 1_000_000
+                        pl.col(date_column).cast(pl.Datetime).dt.timestamp().cast(pl.Int64)
                     )
                 case pl.Utf8:
-                    print("Converting string to datetime")
                     df = df.with_columns(_convert_datetime_string(pl.col(date_column)))
                 case pl.Int64 | pl.Int32:
-                    # Assume it's already unix time in seconds, convert to microseconds
-                    df = df.with_columns(pl.col(date_column) * 1_000_000)
+                    # Assume it's already Unix time in seconds
+                    df = df.with_columns(pl.col(date_column))
                 case _:
                     raise DataTypeError(f"Unsupported date column type: {date_type}")
 
