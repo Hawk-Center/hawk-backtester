@@ -241,12 +241,12 @@ def prepare_weight_data(
                 case pl.Datetime:
                     # Convert datetime to unix microseconds considering timezone
                     df = df.with_columns(
-                        (pl.col(date_column).dt.timestamp(time_zone='UTC') * 1_000_000).cast(pl.Int64)
+                        (pl.col(date_column).dt.timestamp() * 1_000_000).cast(pl.Int64)
                     )
                 case pl.Date:
                     # Convert date to datetime then to unix microseconds
                     df = df.with_columns(
-                        pl.col(date_column).cast(pl.Datetime).dt.timestamp(time_zone='UTC').cast(pl.Int64) * 1_000_000
+                        pl.col(date_column).cast(pl.Datetime).dt.timestamp().cast(pl.Int64) * 1_000_000
                     )
                 case pl.Utf8:
                     print("Converting string to datetime")

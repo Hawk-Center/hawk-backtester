@@ -1,6 +1,6 @@
 [package]
 name = "hawk_backtester"
-version = "0.2.0"
+version = "0.2.3"
 edition = "2021"
 
 [lib]
@@ -12,4 +12,3 @@ pyo3 = { version = "0.21", features = ["extension-module"] }
 pyo3-polars = { version = "0.18.0" }
 polars = { version = "0.44", features = ["lazy"] }
 time = "0.3"
-
