@@ -139,7 +139,7 @@ fn portfolio_returns(
     let daily_rf_log_return = (1.0 + risk_free_rate).powf(1.0 / 252.0).ln();
 
     let mut portfolio_returns = Vec::new();
-    for i in 0..portfolio_weights.len() {
+    for i in 0..log_returns.len() {
         let weights = &portfolio_weights[i];
         let returns = &log_returns[i];
 
@@ -441,9 +441,9 @@ mod tests {
         let dates = Series::new(
             "date".into(),
             &[
-                1714521600_i64, // 2024-05-01 00:00:00 UTC
-                1714608000_i64, // 2024-05-02 00:00:00 UTC
-                1714694400_i64, // 2024-05-03 00:00:00 UTC
+                1714521600_i64 * 1_000_000, // 2024-05-01 00:00:00 UTC
+                1714608000_i64 * 1_000_000, // 2024-05-02 00:00:00 UTC
+                1714694400_i64 * 1_000_000, // 2024-05-03 00:00:00 UTC
             ],
         );
 
@@ -549,9 +549,9 @@ mod tests {
         let dates = Series::new(
             "insight_date".into(),
             &[
-                1714521600_i64, // 2024-05-01 00:00:00 UTC
-                1714608000_i64, // 2024-05-02 00:00:00 UTC
-                1714694400_i64, // 2024-05-03 00:00:00 UTC
+                1714521600_i64 * 1_000_000, // 2024-05-01 00:00:00 UTC
+                1714608000_i64 * 1_000_000, // 2024-05-02 00:00:00 UTC
+                1714694400_i64 * 1_000_000, // 2024-05-03 00:00:00 UTC
             ],
         );
 
