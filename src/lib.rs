@@ -143,8 +143,8 @@ fn portfolio_returns(
         let weights = &portfolio_weights[i];
         let returns = &log_returns[i];
 
-        // Calculate sum of weights to determine cash position
-        let invested_weight: f64 = weights.positions.values().sum();
+        // Calculate sum of absolute weights to determine total margin exposure
+        let invested_weight: f64 = weights.positions.values().map(|w| w.abs()).sum();
         let cash_weight = (1.0 - invested_weight).max(0.0); // Ensure non-negative
 
         // Calculate return from invested positions
@@ -668,5 +668,49 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn test_long_short_positions_margin() {
+        // Use current time for the weights timestamp.
+        let day = time::OffsetDateTime::now_utc();
+
+        // Create portfolio weights with 60% long position in "A" and 60% short position in "B".
+        // Note: algebraically these cancel to 0, but for margin we want to add the absolute exposures.
+        let portfolio = vec![PortfolioWeightData {
+            positions: HashMap::from([(Arc::from("A"), 0.6), (Arc::from("B"), -0.6)]),
+            timestamp: day,
+        }];
+
+        // Create corresponding log returns.
+        // For "A", we use ln(1.1) (~0.09531) and for "B", ln(0.9) (~ -0.10536).
+        let log_returns_vec = vec![LogReturnData {
+            returns: HashMap::from([
+                (Arc::from("A"), (1.1_f64).ln()),
+                (Arc::from("B"), (0.9_f64).ln()),
+            ]),
+            timestamp: day + time::Duration::days(1),
+        }];
+
+        // Use a non-zero risk-free rate so we can tell whether cash weight is added or not.
+        let risk_free_rate = 0.05;
+
+        // When summing absolute weights, we have:
+        // invested_weight = |0.6| + | -0.6| = 1.2, so cash_weight = max(1.0 - 1.2, 0.0) = 0.
+        // This means the entire return must come from the asset returns.
+        let port_returns = portfolio_returns(portfolio, log_returns_vec, risk_free_rate);
+        let result = port_returns[0].returns;
+
+        // Expected return calculated as:
+        // 0.6 * ln(1.1) + (-0.6) * ln(0.9)
+        let expected_invested_return = 0.6 * (1.1_f64).ln() + (-0.6) * (0.9_f64).ln();
+
+        assert!(
+            (result - expected_invested_return).abs() < 1e-10,
+            "Expected portfolio return {} but got {}. \
+            This indicates that long-short positions might not be properly accounted for in margin calculation.",
+            expected_invested_return,
+            result
+        );
     }
 }
