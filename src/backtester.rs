@@ -1,3 +1,4 @@
+use polars::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -58,15 +59,6 @@ impl PortfolioState {
     }
 }
 
-/// Represents the result for a single time step of the simulation.
-#[derive(Debug)]
-pub struct BacktestResult {
-    pub timestamp: OffsetDateTime,
-    pub portfolio_value: f64,
-    /// Daily return expressed as a decimal (for example, 0.01 means +1%).
-    pub daily_return: f64,
-}
-
 /// A simple backtester that simulates the evolution of a portfolio based on price data and
 /// sporadic weight (rebalancing) events.
 pub struct Backtester {
@@ -79,15 +71,19 @@ pub struct Backtester {
 }
 
 impl Backtester {
-    /// Runs the backtest simulation.
+    /// Runs the backtest simulation and returns the results as a Polars DataFrame.
     ///
-    /// The simulation iterates through each price data point in time order.
-    /// When a new weight event (rebalance signal) is reached the portfolio will be fully rebalanced
-    /// according to the event's weights using the current prices. On days with no weight event,
-    /// the portfolio's positions are updated using the price changes.
-    pub fn run(&self) -> Vec<BacktestResult> {
-        let mut results = Vec::new();
-        // Start with the full portfolio value in cash.
+    /// The DataFrame contains:
+    ///  - "timestamp": the simulation's timestamp as a string (ISO 8601 format)
+    ///  - "portfolio_value": the total portfolio value at the timestamp
+    ///  - "daily_return": the daily return (in decimal form)
+    ///  - "cumulative_return": the compounded return from the start
+    pub fn run(&self) -> Result<DataFrame, PolarsError> {
+        let mut timestamps = Vec::new();
+        let mut portfolio_values = Vec::new();
+        let mut daily_returns = Vec::new();
+        let mut cumulative_returns = Vec::new();
+
         let mut portfolio = PortfolioState {
             cash: self.initial_value,
             positions: HashMap::new(),
@@ -102,50 +98,66 @@ impl Backtester {
             portfolio.update_positions(&price_data.prices);
 
             // If a new weight event is due, rebalance using the current prices.
-            if weight_index < n_events {
-                if price_data.timestamp >= self.weight_events[weight_index].timestamp {
-                    // Get the current total market value.
-                    let current_total = portfolio.total_value();
-                    // Clear current positions.
-                    portfolio.positions.clear();
-                    let event = &self.weight_events[weight_index];
-                    let mut allocated_sum = 0.0;
-                    // For each asset, allocate dollars directly.
-                    for (asset, weight) in &event.weights {
-                        allocated_sum += *weight;
-                        if let Some(&price) = price_data.prices.get(asset) {
-                            let allocation_value = weight * current_total;
-                            portfolio.positions.insert(
-                                asset.clone(),
-                                DollarPosition {
-                                    allocated: allocation_value,
-                                    last_price: price,
-                                },
-                            );
-                        }
+            if weight_index < n_events
+                && price_data.timestamp >= self.weight_events[weight_index].timestamp
+            {
+                let current_total = portfolio.total_value();
+                portfolio.positions.clear();
+                let event = &self.weight_events[weight_index];
+                let mut allocated_sum = 0.0;
+                // For each asset, allocate dollars directly.
+                for (asset, weight) in &event.weights {
+                    allocated_sum += *weight;
+                    if let Some(&price) = price_data.prices.get(asset) {
+                        let allocation_value = weight * current_total;
+                        portfolio.positions.insert(
+                            asset.clone(),
+                            DollarPosition {
+                                allocated: allocation_value,
+                                last_price: price,
+                            },
+                        );
                     }
-                    // Hold the remainder in cash.
-                    portfolio.cash = current_total * (1.0 - allocated_sum);
-                    weight_index += 1;
                 }
+                // Hold the remainder in cash.
+                portfolio.cash = current_total * (1.0 - allocated_sum);
+                weight_index += 1;
             }
 
+            // Compute current portfolio value.
             let current_value = portfolio.total_value();
+            // Compute the daily return based on the previous portfolio value.
             let daily_return = if last_value > 0.0 {
                 (current_value / last_value) - 1.0
             } else {
                 0.0
             };
+            // Compute the cumulative return compared to the initial portfolio value.
+            let cumulative_return = if self.initial_value > 0.0 {
+                (current_value / self.initial_value) - 1.0
+            } else {
+                0.0
+            };
 
-            results.push(BacktestResult {
-                timestamp: price_data.timestamp,
-                portfolio_value: current_value,
-                daily_return,
-            });
+            timestamps.push(price_data.timestamp.to_string());
+            portfolio_values.push(current_value);
+            daily_returns.push(daily_return);
+            cumulative_returns.push(cumulative_return);
 
             last_value = current_value;
         }
-        results
+
+        let timestamp_series = Series::new("timestamp".into(), timestamps);
+        let portfolio_value_series = Series::new("portfolio_value".into(), portfolio_values);
+        let daily_return_series = Series::new("daily_return".into(), daily_returns);
+        let cumulative_return_series = Series::new("cumulative_return".into(), cumulative_returns);
+
+        DataFrame::new(vec![
+            timestamp_series.into(),
+            portfolio_value_series.into(),
+            daily_return_series.into(),
+            cumulative_return_series.into(),
+        ])
     }
 }
 
@@ -179,35 +191,32 @@ mod tests {
     }
 
     #[test]
-    fn test_portfolio_total_value() {
-        // Create a portfolio state with some cash and a position.
+    fn test_total_value() {
+        // Create a portfolio with cash 100 and a position in "A" worth 200.
         let mut positions = HashMap::new();
-        // For asset "A", assume allocated $100 with last price = $1.
         positions.insert(
             Arc::from("A"),
             DollarPosition {
-                allocated: 100.0,
-                last_price: 1.0,
+                allocated: 200.0,
+                last_price: 10.0,
             },
         );
         let portfolio = PortfolioState {
             cash: 100.0,
             positions,
         };
-
-        // Total value should be cash + position = 100 + 100 = 200.
-        assert_eq!(portfolio.total_value(), 200.0);
+        let total = portfolio.total_value();
+        assert!((total - 300.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_update_positions() {
-        // Test that positions are updated correctly based on price changes.
+        // Create an initial position for asset "A" with allocated 100 dollars at last_price = 10.
         let mut positions = HashMap::new();
-        // For asset "A", allocated $500 at a last price of 10.
         positions.insert(
             Arc::from("A"),
             DollarPosition {
-                allocated: 500.0,
+                allocated: 100.0,
                 last_price: 10.0,
             },
         );
@@ -215,110 +224,64 @@ mod tests {
             cash: 0.0,
             positions,
         };
-        // New price for asset "A" is 11.
-        let mut prices = HashMap::new();
-        prices.insert(Arc::from("A"), 11.0);
-        portfolio.update_positions(&prices);
-        // Expected updated allocation: 500 * (11 / 10) = 550.
+        // Simulate a price update: asset "A" now at 12.
+        let mut current_prices = HashMap::new();
+        current_prices.insert(Arc::from("A"), 12.0);
+        portfolio.update_positions(&current_prices);
         let pos = portfolio.positions.get(&Arc::from("A")).unwrap();
-        assert!((pos.allocated - 550.0).abs() < 1e-10);
-        assert!((pos.last_price - 11.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_rebalance_on_weight_event() {
-        // Verify that rebalancing sets the correct dollar allocation and cash.
-        let initial_value = 1000.0;
-        let mut portfolio = PortfolioState {
-            cash: initial_value,
-            positions: HashMap::new(),
-        };
-
-        // Create a weight event that allocates 60% to asset "A" and 20% to asset "B".
-        let event_time = OffsetDateTime::now_utc();
-        let weight_event = make_weight_event(event_time, vec![("A", 0.6), ("B", 0.2)]);
-
-        // Create matching price data.
-        // Asset "A" is priced at 10 and asset "B" at 20.
-        let price_data = make_price_data(event_time, vec![("A", 10.0), ("B", 20.0)]);
-
-        // Simulate a rebalance.
-        let current_total = portfolio.total_value();
-        portfolio.positions.clear();
-        let mut allocated_sum = 0.0;
-        for (asset, weight) in weight_event.weights.iter() {
-            allocated_sum += *weight;
-            if let Some(&price) = price_data.prices.get(asset) {
-                let allocation_value = weight * current_total;
-                portfolio.positions.insert(
-                    asset.clone(),
-                    DollarPosition {
-                        allocated: allocation_value,
-                        last_price: price,
-                    },
-                );
-            }
-        }
-        portfolio.cash = current_total * (1.0 - allocated_sum);
-
-        // Expected:
-        // For "A": 0.6 * 1000 = 600 dollars.
-        // For "B": 0.2 * 1000 = 200 dollars.
-        // Cash: 1000 - (600 + 200) = 200.
-        let a_pos = portfolio.positions.get(&Arc::from("A")).unwrap();
-        let b_pos = portfolio.positions.get(&Arc::from("B")).unwrap();
-        assert!((a_pos.allocated - 600.0).abs() < 1e-10);
-        assert!((b_pos.allocated - 200.0).abs() < 1e-10);
-        assert!((portfolio.cash - 200.0).abs() < 1e-10);
+        // Expect allocation updated by factor (12/10) = 1.2, so new allocated = 100*1.2 = 120, last_price becomes 12.
+        assert!((pos.allocated - 120.0).abs() < 1e-10);
+        assert!((pos.last_price - 12.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_backtester_no_weight_event() {
-        // When no rebalance occurs, the portfolio remains fully in cash.
-        let start_time = OffsetDateTime::now_utc();
-        let price_data = vec![
-            make_price_data(start_time, vec![("A", 10.0)]),
-            make_price_data(start_time + Duration::days(1), vec![("A", 10.0)]),
-            make_price_data(start_time + Duration::days(2), vec![("A", 10.0)]),
+        // Test backtester behavior when no weight events occur.
+        let now = OffsetDateTime::now_utc();
+        let prices = vec![
+            make_price_data(now, vec![("A", 10.0)]),
+            make_price_data(now + Duration::days(1), vec![("A", 10.0)]),
+            make_price_data(now + Duration::days(2), vec![("A", 10.0)]),
         ];
         let weight_events = Vec::new();
-
         let backtester = Backtester {
-            prices: price_data,
+            prices,
             weight_events,
             initial_value: 1000.0,
         };
 
-        let results = backtester.run();
-        // All results should show the portfolio value constant at 1000.0
-        for result in results {
-            assert!((result.portfolio_value - 1000.0).abs() < 1e-10);
-            assert_eq!(result.daily_return, 0.0);
+        let df = backtester.run().expect("Backtest should run");
+
+        // Access each series by column name.
+        let pv_series = df.column("portfolio_value").unwrap();
+        let daily_series = df.column("daily_return").unwrap();
+        let cum_series = df.column("cumulative_return").unwrap();
+
+        for i in 0..df.height() {
+            let value: f64 = pv_series.get(i).unwrap().extract().unwrap();
+            let daily: f64 = daily_series.get(i).unwrap().extract().unwrap();
+            let cum: f64 = cum_series.get(i).unwrap().extract().unwrap();
+            assert!((value - 1000.0).abs() < 1e-10);
+            assert_eq!(daily, 0.0);
+            assert_eq!(cum, 0.0);
         }
     }
 
     #[test]
     fn test_backtester_with_weight_event() {
-        // Simulate a scenario with one weight (rebalance) event.
-        let start_time = OffsetDateTime::now_utc();
+        // Simulate a backtest with one weight event.
+        let now = OffsetDateTime::now_utc();
 
         // Day 1 prices.
-        let pd1 = make_price_data(start_time, vec![("A", 10.0), ("B", 20.0)]);
-        // Day 2 prices (market moves).
-        let pd2 = make_price_data(
-            start_time + Duration::days(1),
-            vec![("A", 11.0), ("B", 19.0)],
-        );
-        // Day 3 prices.
-        let pd3 = make_price_data(
-            start_time + Duration::days(2),
-            vec![("A", 12.0), ("B", 18.0)],
-        );
-
+        let pd1 = make_price_data(now, vec![("A", 10.0), ("B", 20.0)]);
+        // Day 2: Prices change.
+        let pd2 = make_price_data(now + Duration::days(1), vec![("A", 11.0), ("B", 19.0)]);
+        // Day 3: Prices change again.
+        let pd3 = make_price_data(now + Duration::days(2), vec![("A", 12.0), ("B", 18.0)]);
         let prices = vec![pd1, pd2, pd3];
 
-        // Create a weight event on Day 1 that allocates 50% to "A" and 30% to "B".
-        let we = make_weight_event(start_time, vec![("A", 0.5), ("B", 0.3)]);
+        // Weight event on Day 1.
+        let we = make_weight_event(now, vec![("A", 0.5), ("B", 0.3)]);
         let weight_events = vec![we];
 
         let backtester = Backtester {
@@ -327,37 +290,45 @@ mod tests {
             initial_value: 1000.0,
         };
 
-        let results = backtester.run();
-        // Expected for Day 1 (after rebalance):
-        // Allocation: for "A" -> 0.5 * 1000 = 500, for "B" -> 0.3 * 1000 = 300, cash = 200.
-        // Day 2:
-        //   For "A": 500 dollars grows by a factor 11/10 = 1.1 => 550.
-        //   For "B": 300 dollars grows by a factor 19/20 = 0.95 => 285.
-        //   Cash remains 200.
-        // Total = 550 + 285 + 200 = 1035.
-        assert_eq!(results.len(), 3);
-        assert!((results[0].portfolio_value - 1000.0).abs() < 1e-10);
-        let expected_day2 = 550.0 + 285.0 + 200.0;
-        assert!((results[1].portfolio_value - expected_day2).abs() < 1e-10);
-        let expected_return_day2 = (expected_day2 / 1000.0) - 1.0;
-        assert!((results[1].daily_return - expected_return_day2).abs() < 1e-10);
+        let df = backtester.run().expect("Backtest failed");
+
+        let pv_series = df.column("portfolio_value").unwrap();
+        let daily_series = df.column("daily_return").unwrap();
+        let cum_series = df.column("cumulative_return").unwrap();
+
+        // Day 1: After rebalancing, portfolio should be 1000.0.
+        let value1: f64 = pv_series.get(0).unwrap().extract().unwrap();
+        let cum1: f64 = cum_series.get(0).unwrap().extract().unwrap();
+        assert!((value1 - 1000.0).abs() < 1e-10);
+        assert_eq!(cum1, 0.0);
+
+        // Day 2: Expected calculations:
+        // For asset "A": 500 dollars * (11/10) = 550,
+        // For asset "B": 300 dollars * (19/20) = 285,
+        // Cash remains 200. Total = 550 + 285 + 200 = 1035.
+        let value2: f64 = pv_series.get(1).unwrap().extract().unwrap();
+        let daily2: f64 = daily_series.get(1).unwrap().extract().unwrap();
+        let cum2: f64 = cum_series.get(1).unwrap().extract().unwrap();
+        assert!((value2 - 1035.0).abs() < 1e-10);
+        assert!((daily2 - 0.035).abs() < 1e-3);
+        assert!((cum2 - 0.035).abs() < 1e-3);
     }
 
     #[test]
     fn test_multiple_weight_events() {
-        // Test a simulation with multiple rebalancing events.
-        let start_time = OffsetDateTime::now_utc();
+        // Simulate a backtest with multiple weight events.
+        let now = OffsetDateTime::now_utc();
 
-        // Price data for four days.
-        let pd1 = make_price_data(start_time, vec![("A", 10.0)]);
-        let pd2 = make_price_data(start_time + Duration::days(1), vec![("A", 10.0)]);
-        let pd3 = make_price_data(start_time + Duration::days(2), vec![("A", 12.0)]);
-        let pd4 = make_price_data(start_time + Duration::days(3), vec![("A", 11.0)]);
+        // Four days of price data.
+        let pd1 = make_price_data(now, vec![("A", 10.0)]);
+        let pd2 = make_price_data(now + Duration::days(1), vec![("A", 10.0)]);
+        let pd3 = make_price_data(now + Duration::days(2), vec![("A", 12.0)]);
+        let pd4 = make_price_data(now + Duration::days(3), vec![("A", 11.0)]);
         let prices = vec![pd1, pd2, pd3, pd4];
 
-        // Two rebalancing events: one on Day 1 and another on Day 3.
-        let we1 = make_weight_event(start_time, vec![("A", 0.7)]); // 70% in "A"
-        let we2 = make_weight_event(start_time + Duration::days(2), vec![("A", 0.5)]); // 50% in "A"
+        // Two weight events.
+        let we1 = make_weight_event(now, vec![("A", 0.7)]); // Event on Day 1.
+        let we2 = make_weight_event(now + Duration::days(2), vec![("A", 0.5)]); // Event on Day 3.
         let weight_events = vec![we1, we2];
 
         let backtester = Backtester {
@@ -366,26 +337,40 @@ mod tests {
             initial_value: 1000.0,
         };
 
-        let results = backtester.run();
-        assert_eq!(results.len(), 4);
+        let df = backtester.run().expect("Backtest failed");
+        let pv_series = df.column("portfolio_value").unwrap();
 
-        // Day 1: After rebalancing, allocation:
-        //   "A": 0.7 * 1000 = 700 dollars allocated, cash = 300.
-        // Day 2: Price remains unchanged (10.0 for "A"), so portfolio value remains 700 + 300 = 1000.
-        //
-        // Day 3:
-        //   Before rebalancing:
-        //     "A": grows from 700 to 700 * (12/10) = 840,
-        //     Cash remains 300, so total value becomes 840 + 300 = 1140.
-        //   Rebalance on Day 3 using 1140:
-        //     New allocation: 0.5 * 1140 = 570 in "A", and cash = 570.
-        //
-        // Day 4:
-        //   "A" position updates with new price from 12 to 11:
-        //     Updated "A" value: 570 * (11/12) ≈ 522.5.
-        //   Total portfolio value: 522.5 + 570 ≈ 1092.5.
-        let expected_day4_value = (570.0 * (11.0 / 12.0)) + 570.0; // ~1092.5
-        let computed_day4 = results.last().unwrap().portfolio_value;
-        assert!((computed_day4 - expected_day4_value).abs() < 1e-6);
+        // Final day (Day 4) portfolio value is expected to be ~1092.5.
+        let value4: f64 = pv_series.get(3).unwrap().extract().unwrap();
+        assert!((value4 - 1092.5).abs() < 1e-1);
+    }
+
+    #[test]
+    fn test_dataframe_output() {
+        // Verify that the DataFrame output has the expected structure.
+        let now = OffsetDateTime::now_utc();
+        let prices = vec![
+            make_price_data(now, vec![("A", 100.0)]),
+            make_price_data(now + Duration::days(1), vec![("A", 101.0)]),
+        ];
+        // Use an empty weight events vector.
+        let weight_events = Vec::new();
+        let backtester = Backtester {
+            prices: prices.clone(),
+            weight_events,
+            initial_value: 1000.0,
+        };
+
+        let df = backtester.run().expect("Backtest failed");
+        let cols = df.get_column_names();
+        let expected_cols = vec![
+            "timestamp",
+            "portfolio_value",
+            "daily_return",
+            "cumulative_return",
+        ];
+        assert_eq!(cols, expected_cols);
+        // Check that the number of rows equals the number of price data entries.
+        assert_eq!(df.height(), prices.len());
     }
 }

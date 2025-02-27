@@ -1,6 +1,7 @@
 pub mod backtester;
 
 use backtester::{Backtester, PriceData, WeightEvent};
+use polars::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
@@ -50,13 +51,9 @@ fn main() {
         initial_value: 10_000.0,
     };
 
-    let results = backtester.run();
-    for res in results {
-        println!(
-            "Time: {}, Portfolio Value: {:.2}, Daily Return: {:.2}%",
-            res.timestamp,
-            res.portfolio_value,
-            res.daily_return * 100.0
-        );
-    }
+    // Run the simulation, which now returns a Polars DataFrame.
+    let df = backtester.run().expect("Backtest run failed");
+
+    // Print the tail of the DataFrame for logging purposes.
+    println!("Tail of backtest results:\n{:?}", df.tail(Some(5)));
 }
