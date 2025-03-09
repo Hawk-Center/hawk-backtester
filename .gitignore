@@ -58,3 +58,6 @@ EOF
 /tests/data
 
 .pytest_cache/
+
+# data directory
+data/
