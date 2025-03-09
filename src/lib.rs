@@ -6,10 +6,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use time::Date;
 
-pub mod backtester;
-pub mod input_handler;
+mod backtester;
+mod input_handler;
+mod metrics;
+
 use backtester::{Backtester, PriceData, WeightEvent};
 use input_handler::{parse_price_df, parse_weights_df};
+use metrics::BacktestMetrics;
 
 /// Python wrapper for the Rust Backtester
 #[pyclass]
