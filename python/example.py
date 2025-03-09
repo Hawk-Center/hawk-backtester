@@ -13,16 +13,30 @@ def main():
     hff_prices_df = hff_prices_df.pivot(
         index="date", columns="ticker", values="close"
     ).sort("date")
+    # Sort by date
+    hff_prices_df = hff_prices_df.sort("date")
+    null_count = hff_prices_df.null_count()
+    print(f"Number of inital null price values: {null_count}")
     # Forward fill null values
     hff_prices_df = hff_prices_df.fill_null(strategy="forward")
     # otherwise fill with 0
     # Count the number of null values remaining
     null_count = hff_prices_df.null_count()
-    print(f"Number of null values remaining: {null_count}")
+    print(f"Number of null price values remaining: {null_count}")
     # Drop rows with any null values
     hff_prices_df = hff_prices_df.drop_nulls()
-    hff_weights_df = pl.read_csv("data/model_insights_rsi.csv")
-
+    hff_weights_df = pl.read_csv("data/eqmom.csv")
+    hff_weights_df = hff_weights_df.sort("date")
+    null_count = hff_weights_df.null_count()
+    print(f"Number of inital null weight values: {null_count}")
+    # Forward fill null values
+    hff_weights_df = hff_weights_df.fill_null(strategy="forward")
+    # otherwise fill with 0
+    # Count the number of null values remaining
+    null_count = hff_weights_df.null_count()
+    print(f"Number of null weight values remaining: {null_count}")
+    # Drop rows with any null values
+    hff_weights_df = hff_weights_df.drop_nulls()
     # Print input data
     print("Input Data Preview:")
     print("\nPrice data:")
@@ -59,6 +73,9 @@ def main():
     print(
         f"Simulation Speed: {metrics['simulation_speed_dates_per_sec']:.2f} dates per second"
     )
+
+    # Save results to CSV
+    results_df.write_csv("backtest_results.csv")
 
 
 if __name__ == "__main__":

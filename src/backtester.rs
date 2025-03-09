@@ -103,6 +103,11 @@ impl<'a> Backtester<'a> {
 
         // Iterate through all price data points in chronological order.
         for price_data in self.prices {
+            // Skip data points before the start date
+            if price_data.timestamp < self.start_date {
+                continue;
+            }
+
             // Update existing positions with today's prices.
             portfolio.update_positions(&price_data.prices);
 
@@ -110,15 +115,11 @@ impl<'a> Backtester<'a> {
             while weight_index < n_events
                 && price_data.timestamp >= self.weight_events[weight_index].timestamp
             {
-                // If this weight event is for a future date, break
-                if price_data.timestamp != self.weight_events[weight_index].timestamp {
-                    break;
-                }
-
+                let event = &self.weight_events[weight_index];
                 let current_total = portfolio.total_value();
                 portfolio.positions.clear();
-                let event = &self.weight_events[weight_index];
                 let mut allocated_sum = 0.0;
+
                 // For each asset, allocate dollars directly.
                 for (asset, weight) in &event.weights {
                     if let Some(&price) = price_data.prices.get(asset) {
@@ -137,6 +138,9 @@ impl<'a> Backtester<'a> {
                 portfolio.cash = current_total * (1.0 - allocated_sum);
                 weight_index += 1;
                 num_trades += 1;
+
+                // Break after processing this weight event
+                break;
             }
 
             // Compute current portfolio value.

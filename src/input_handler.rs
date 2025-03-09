@@ -186,10 +186,18 @@ fn validate_dates(df: &DataFrame) -> Result<(), PolarsError> {
     Ok(())
 }
 
+/// Validates and sorts price data by date.
+/// Returns a new Vec<PriceData> sorted by timestamp.
+fn sort_price_data(data: Vec<PriceData>) -> Vec<PriceData> {
+    let mut sorted_data = data;
+    sorted_data.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    sorted_data
+}
+
 /// Parses a price DataFrame into a vector of `PriceData`.
 ///
 /// The input DF must include a "date" column (UTF8) in Y/M/D format (e.g., "2023/01/15" or "2023-01-15")
-/// and one column per security with closing prices.
+/// and one column per security with closing prices. Price data is automatically sorted by date in ascending order.
 ///
 /// # Errors
 /// Returns an error if validation fails or if data cannot be parsed.
@@ -258,13 +266,24 @@ pub fn parse_price_df(df: &DataFrame) -> Result<Vec<PriceData>, PolarsError> {
             prices,
         });
     }
-    Ok(prices_vec)
+
+    // Sort price data before returning
+    Ok(sort_price_data(prices_vec))
+}
+
+/// Validates and sorts weight events by date.
+/// Returns a new Vec<WeightEvent> sorted by timestamp.
+fn sort_weight_events(events: Vec<WeightEvent>) -> Vec<WeightEvent> {
+    let mut sorted_events = events;
+    sorted_events.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    sorted_events
 }
 
 /// Parses a weights DataFrame into a vector of `WeightEvent`.
 ///
 /// For each row, the DF must include a "date" column (UTF8) in Y/M/D format (e.g., "2023/01/15" or "2023-01-15")
 /// and one column per security with weights (the value 0.0 or null may indicate no allocation for that security).
+/// Weight events are automatically sorted by date in ascending order.
 ///
 /// # Errors
 /// Returns an error if validation fails or if data cannot be parsed.
@@ -331,5 +350,7 @@ pub fn parse_weights_df(df: &DataFrame) -> Result<Vec<WeightEvent>, PolarsError>
             weights,
         });
     }
-    Ok(events)
+
+    // Sort events by date before returning
+    Ok(sort_weight_events(events))
 }
