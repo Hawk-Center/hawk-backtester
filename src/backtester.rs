@@ -60,6 +60,94 @@ impl PortfolioState {
     }
 }
 
+/// Performance metrics for a backtest
+#[derive(Debug, Clone)]
+pub struct BacktestMetrics {
+    pub total_return: f64,
+    pub annualized_return: f64,
+    pub annualized_volatility: f64,
+    pub sharpe_ratio: f64,
+    pub sortino_ratio: f64,
+    pub max_drawdown: f64,
+    pub avg_drawdown: f64,
+    pub avg_daily_return: f64,
+    pub win_rate: f64,
+    pub num_trades: usize,
+}
+
+impl BacktestMetrics {
+    fn calculate(
+        daily_returns: &[f64],
+        drawdowns: &[f64],
+        num_days: usize,
+        num_trades: usize,
+    ) -> Self {
+        let total_return = (1.0 + daily_returns.iter().sum::<f64>()).ln();
+
+        // Annualized metrics (assuming 252 trading days per year)
+        let trading_days_per_year = 252.0;
+        let years = num_days as f64 / trading_days_per_year;
+        let annualized_return = (1.0 + total_return).powf(1.0 / years) - 1.0;
+
+        // Calculate volatility
+        let avg_daily_return = daily_returns.iter().sum::<f64>() / daily_returns.len() as f64;
+        let variance: f64 = daily_returns
+            .iter()
+            .map(|&r| (r - avg_daily_return).powi(2))
+            .sum::<f64>()
+            / (daily_returns.len() - 1) as f64;
+        let daily_volatility = variance.sqrt();
+        let annualized_volatility = daily_volatility * (trading_days_per_year as f64).sqrt();
+
+        // Sharpe Ratio (assuming risk-free rate of 0.02)
+        let risk_free_rate = 0.02;
+        let sharpe_ratio = if annualized_volatility != 0.0 {
+            (annualized_return - risk_free_rate) / annualized_volatility
+        } else {
+            0.0
+        };
+
+        // Sortino Ratio (using only negative returns for denominator)
+        let negative_returns: Vec<f64> = daily_returns
+            .iter()
+            .filter(|&&r| r < 0.0)
+            .copied()
+            .collect();
+        let downside_variance = if !negative_returns.is_empty() {
+            negative_returns.iter().map(|&r| r.powi(2)).sum::<f64>() / negative_returns.len() as f64
+        } else {
+            0.0
+        };
+        let downside_volatility = (downside_variance * trading_days_per_year).sqrt();
+        let sortino_ratio = if downside_volatility != 0.0 {
+            (annualized_return - risk_free_rate) / downside_volatility
+        } else {
+            0.0
+        };
+
+        // Drawdown metrics
+        let max_drawdown = drawdowns.iter().copied().fold(0.0, f64::min);
+        let avg_drawdown = drawdowns.iter().sum::<f64>() / drawdowns.len() as f64;
+
+        // Win rate
+        let winning_days = daily_returns.iter().filter(|&&r| r > 0.0).count();
+        let win_rate = winning_days as f64 / daily_returns.len() as f64;
+
+        BacktestMetrics {
+            total_return,
+            annualized_return,
+            annualized_volatility,
+            sharpe_ratio,
+            sortino_ratio,
+            max_drawdown,
+            avg_drawdown,
+            avg_daily_return,
+            win_rate,
+            num_trades,
+        }
+    }
+}
+
 /// A simple backtester that simulates the evolution of a portfolio based on price data and
 /// sporadic weight (rebalancing) events.
 pub struct Backtester {
@@ -72,15 +160,17 @@ pub struct Backtester {
 }
 
 impl Backtester {
-    /// Runs the backtest simulation and returns the results as a Polars DataFrame.
+    /// Runs the backtest simulation and returns the results as a Polars DataFrame and metrics.
     ///
-    /// The DataFrame contains:
-    ///  - "date": the simulation's timestamp as a string (ISO 8601 format)
-    ///  - "portfolio_value": the total portfolio value at the timestamp
-    ///  - "daily_return": the daily return (in decimal form)
-    ///  - "cumulative_return": the compounded return from the start
-    ///  - "drawdown": the percentage decline from the peak portfolio value
-    pub fn run(&self) -> Result<DataFrame, PolarsError> {
+    /// Returns:
+    ///  - DataFrame containing:
+    ///     - "date": the simulation's timestamp as a string (ISO 8601 format)
+    ///     - "portfolio_value": the total portfolio value at the timestamp
+    ///     - "daily_return": the daily return (in decimal form)
+    ///     - "cumulative_return": the compounded return from the start
+    ///     - "drawdown": the percentage decline from the peak portfolio value
+    ///  - BacktestMetrics containing various performance metrics
+    pub fn run(&self) -> Result<(DataFrame, BacktestMetrics), PolarsError> {
         let mut timestamps = Vec::new();
         let mut portfolio_values = Vec::new();
         let mut daily_returns = Vec::new();
@@ -95,6 +185,7 @@ impl Backtester {
         let mut peak_value = self.initial_value;
         let mut weight_index = 0;
         let n_events = self.weight_events.len();
+        let mut num_trades = 0;
 
         // Iterate through all price data points in chronological order.
         for price_data in &self.prices {
@@ -163,19 +254,25 @@ impl Backtester {
             last_value = current_value;
         }
 
+        // Calculate metrics
+        let metrics =
+            BacktestMetrics::calculate(&daily_returns, &drawdowns, self.prices.len(), num_trades);
+
         let date_series = Series::new("date".into(), timestamps);
         let portfolio_value_series = Series::new("portfolio_value".into(), portfolio_values);
-        let daily_return_series = Series::new("daily_return".into(), daily_returns);
+        let daily_return_series = Series::new("daily_return".into(), daily_returns.clone());
         let cumulative_return_series = Series::new("cumulative_return".into(), cumulative_returns);
-        let drawdown_series = Series::new("drawdown".into(), drawdowns);
+        let drawdown_series = Series::new("drawdown".into(), drawdowns.clone());
 
-        DataFrame::new(vec![
+        let df = DataFrame::new(vec![
             date_series.into(),
             portfolio_value_series.into(),
             daily_return_series.into(),
             cumulative_return_series.into(),
             drawdown_series.into(),
-        ])
+        ])?;
+
+        Ok((df, metrics))
     }
 }
 
@@ -267,7 +364,7 @@ mod tests {
             initial_value: 1000.0,
         };
 
-        let df = backtester.run().expect("Backtest should run");
+        let (df, _) = backtester.run().expect("Backtest should run");
 
         // Access each series by column name.
         let pv_series = df.column("portfolio_value").unwrap();
@@ -307,7 +404,7 @@ mod tests {
             initial_value: 1000.0,
         };
 
-        let df = backtester.run().expect("Backtest failed");
+        let (df, _) = backtester.run().expect("Backtest failed");
 
         let pv_series = df.column("portfolio_value").unwrap();
         let daily_series = df.column("daily_return").unwrap();
@@ -354,7 +451,7 @@ mod tests {
             initial_value: 1000.0,
         };
 
-        let df = backtester.run().expect("Backtest failed");
+        let (df, _) = backtester.run().expect("Backtest failed");
         let pv_series = df.column("portfolio_value").unwrap();
 
         // Final day (Day 4) portfolio value is expected to be ~1092.5.
@@ -378,7 +475,7 @@ mod tests {
             initial_value: 1000.0,
         };
 
-        let df = backtester.run().expect("Backtest failed");
+        let (df, _) = backtester.run().expect("Backtest failed");
         let cols = df.get_column_names();
         let expected_cols = vec![
             "date",

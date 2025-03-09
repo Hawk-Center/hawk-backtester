@@ -26,8 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Run the simulation and output the DataFrame tail.
-    let df = backtester.run()?;
+    let (df, metrics) = backtester.run()?;
     println!("Tail of backtest results:\n{:?}", df.tail(Some(5)));
-
+    println!("Metrics:\n{:?}", metrics);
     Ok(())
 }

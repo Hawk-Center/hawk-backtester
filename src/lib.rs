@@ -1,5 +1,6 @@
 use polars::prelude::*;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use pyo3_polars::PyDataFrame;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -27,12 +28,20 @@ impl PyBacktester {
     /// Run the backtest using price and weight data from Python
     ///
     /// Args:
-    ///     prices_df: Polars DataFrame with timestamp column (m/d/y format) and price columns
-    ///     weights_df: Polars DataFrame with timestamp column (m/d/y format) and weight columns
+    ///     prices_df: Polars DataFrame with date column (m/d/y format) and price columns
+    ///     weights_df: Polars DataFrame with date column (m/d/y format) and weight columns
     ///
     /// Returns:
-    ///     Polars DataFrame with backtest results
-    fn run(&self, prices_df: PyDataFrame, weights_df: PyDataFrame) -> PyResult<PyDataFrame> {
+    ///     Tuple containing:
+    ///     - Polars DataFrame with backtest results
+    ///     - Dictionary with performance metrics
+    #[pyo3(text_signature = "(self, prices_df, weights_df)")]
+    fn run<'py>(
+        &self,
+        py: Python<'py>,
+        prices_df: PyDataFrame,
+        weights_df: PyDataFrame,
+    ) -> PyResult<(PyDataFrame, Py<PyDict>)> {
         // Extract the underlying Polars DataFrame references
         let prices_df: DataFrame = prices_df.as_ref().clone();
         let weights_df: DataFrame = weights_df.as_ref().clone();
@@ -60,15 +69,28 @@ impl PyBacktester {
         };
 
         // Run the backtest and convert the result back to a Polars DataFrame
-        let results_df = backtester.run().map_err(|e| {
+        let (results_df, metrics) = backtester.run().map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Error running backtest: {}",
                 e
             ))
         })?;
 
-        // Return the result as a PyDataFrame
-        Ok(PyDataFrame(results_df))
+        // Create Python dictionary for metrics
+        let metrics_dict = PyDict::new(py);
+        metrics_dict.set_item("total_return", metrics.total_return)?;
+        metrics_dict.set_item("annualized_return", metrics.annualized_return)?;
+        metrics_dict.set_item("annualized_volatility", metrics.annualized_volatility)?;
+        metrics_dict.set_item("sharpe_ratio", metrics.sharpe_ratio)?;
+        metrics_dict.set_item("sortino_ratio", metrics.sortino_ratio)?;
+        metrics_dict.set_item("max_drawdown", metrics.max_drawdown)?;
+        metrics_dict.set_item("avg_drawdown", metrics.avg_drawdown)?;
+        metrics_dict.set_item("avg_daily_return", metrics.avg_daily_return)?;
+        metrics_dict.set_item("win_rate", metrics.win_rate)?;
+        metrics_dict.set_item("num_trades", metrics.num_trades)?;
+
+        // Return tuple of DataFrame and metrics dictionary
+        Ok((PyDataFrame(results_df), metrics_dict.into()))
     }
 }
 
