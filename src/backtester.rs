@@ -75,21 +75,24 @@ impl Backtester {
     /// Runs the backtest simulation and returns the results as a Polars DataFrame.
     ///
     /// The DataFrame contains:
-    ///  - "timestamp": the simulation's timestamp as a string (ISO 8601 format)
+    ///  - "date": the simulation's timestamp as a string (ISO 8601 format)
     ///  - "portfolio_value": the total portfolio value at the timestamp
     ///  - "daily_return": the daily return (in decimal form)
     ///  - "cumulative_return": the compounded return from the start
+    ///  - "drawdown": the percentage decline from the peak portfolio value
     pub fn run(&self) -> Result<DataFrame, PolarsError> {
         let mut timestamps = Vec::new();
         let mut portfolio_values = Vec::new();
         let mut daily_returns = Vec::new();
         let mut cumulative_returns = Vec::new();
+        let mut drawdowns = Vec::new();
 
         let mut portfolio = PortfolioState {
             cash: self.initial_value,
             positions: HashMap::new(),
         };
         let mut last_value = self.initial_value;
+        let mut peak_value = self.initial_value;
         let mut weight_index = 0;
         let n_events = self.weight_events.len();
 
@@ -127,6 +130,17 @@ impl Backtester {
 
             // Compute current portfolio value.
             let current_value = portfolio.total_value();
+
+            // Update peak value if we have a new high
+            peak_value = peak_value.max(current_value);
+
+            // Compute drawdown as percentage decline from peak
+            let drawdown = if peak_value > 0.0 {
+                (current_value / peak_value) - 1.0
+            } else {
+                0.0
+            };
+
             // Compute the daily return based on the previous portfolio value.
             let daily_return = if last_value > 0.0 {
                 (current_value / last_value) - 1.0
@@ -144,20 +158,23 @@ impl Backtester {
             portfolio_values.push(current_value);
             daily_returns.push(daily_return);
             cumulative_returns.push(cumulative_return);
+            drawdowns.push(drawdown);
 
             last_value = current_value;
         }
 
-        let timestamp_series = Series::new("timestamp".into(), timestamps);
+        let date_series = Series::new("date".into(), timestamps);
         let portfolio_value_series = Series::new("portfolio_value".into(), portfolio_values);
         let daily_return_series = Series::new("daily_return".into(), daily_returns);
         let cumulative_return_series = Series::new("cumulative_return".into(), cumulative_returns);
+        let drawdown_series = Series::new("drawdown".into(), drawdowns);
 
         DataFrame::new(vec![
-            timestamp_series.into(),
+            date_series.into(),
             portfolio_value_series.into(),
             daily_return_series.into(),
             cumulative_return_series.into(),
+            drawdown_series.into(),
         ])
     }
 }
@@ -364,10 +381,11 @@ mod tests {
         let df = backtester.run().expect("Backtest failed");
         let cols = df.get_column_names();
         let expected_cols = vec![
-            "timestamp",
+            "date",
             "portfolio_value",
             "daily_return",
             "cumulative_return",
+            "drawdown",
         ];
         assert_eq!(cols, expected_cols);
         // Check that the number of rows equals the number of price data entries.

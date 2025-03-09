@@ -10,14 +10,14 @@ use crate::backtester::{PriceData, WeightEvent};
 
 /// Parses a price DataFrame into a vector of `PriceData`.
 ///
-/// The input DF must include a "timestamp" column (UTF8) in m/d/y format (e.g., "01/15/2023")
+/// The input DF must include a "date" column (UTF8) in m/d/y format (e.g., "01/15/2023")
 /// and one column per security with closing prices.
 ///
 /// # Errors
-/// Returns an error if the timestamp column is not present or cannot be parsed.
+/// Returns an error if the date column is not present or cannot be parsed.
 pub fn parse_price_df(df: &DataFrame) -> Result<Vec<PriceData>, PolarsError> {
-    // Get the timestamp column
-    let ts_series = df.column("timestamp")?;
+    // Get the date column
+    let ts_series = df.column("date")?;
     // Extract string values using Series's string representation methods
     let ts_chunked = ts_series.str()?;
     let column_names = df.get_column_names();
@@ -31,13 +31,13 @@ pub fn parse_price_df(df: &DataFrame) -> Result<Vec<PriceData>, PolarsError> {
     for i in 0..df.height() {
         let ts_str = ts_chunked
             .get(i)
-            .ok_or_else(|| PolarsError::ComputeError("Missing timestamp value".into()))?;
-        let timestamp = Date::parse(ts_str, &date_format).map_err(|e| {
+            .ok_or_else(|| PolarsError::ComputeError("Missing date value".into()))?;
+        let date = Date::parse(ts_str, &date_format).map_err(|e| {
             PolarsError::ComputeError(format!("Error parsing date: {:?}", e).into())
         })?;
         let mut prices = HashMap::new();
         for col_name in &column_names {
-            if *col_name == "timestamp" {
+            if *col_name == "date" {
                 continue;
             }
             let col = df.column(col_name)?;
@@ -50,20 +50,23 @@ pub fn parse_price_df(df: &DataFrame) -> Result<Vec<PriceData>, PolarsError> {
             };
             prices.insert(Arc::from(col_name.to_string()), price);
         }
-        prices_vec.push(PriceData { timestamp, prices });
+        prices_vec.push(PriceData {
+            timestamp: date,
+            prices,
+        });
     }
     Ok(prices_vec)
 }
 
 /// Parses a weights DataFrame into a vector of `WeightEvent`.
 ///
-/// For each row, the DF must include a "timestamp" column (UTF8) in m/d/y format (e.g., "01/15/2023")
+/// For each row, the DF must include a "date" column (UTF8) in m/d/y format (e.g., "01/15/2023")
 /// and one column per security with weights (the value 0.0 or null may indicate no allocation for that security).
 ///
 /// # Errors
-/// Returns an error if the timestamp column is not present or cannot be parsed.
+/// Returns an error if the date column is not present or cannot be parsed.
 pub fn parse_weights_df(df: &DataFrame) -> Result<Vec<WeightEvent>, PolarsError> {
-    let ts_series = df.column("timestamp")?;
+    let ts_series = df.column("date")?;
     let ts_chunked = ts_series.str()?;
     let column_names = df.get_column_names();
     let mut events = Vec::with_capacity(df.height());
@@ -76,13 +79,13 @@ pub fn parse_weights_df(df: &DataFrame) -> Result<Vec<WeightEvent>, PolarsError>
     for i in 0..df.height() {
         let ts_str = ts_chunked
             .get(i)
-            .ok_or_else(|| PolarsError::ComputeError("Missing timestamp value".into()))?;
-        let timestamp = Date::parse(ts_str, &date_format).map_err(|e| {
+            .ok_or_else(|| PolarsError::ComputeError("Missing date value".into()))?;
+        let date = Date::parse(ts_str, &date_format).map_err(|e| {
             PolarsError::ComputeError(format!("Error parsing date: {:?}", e).into())
         })?;
         let mut weights = HashMap::new();
         for col_name in &column_names {
-            if *col_name == "timestamp" {
+            if *col_name == "date" {
                 continue;
             }
             let col = df.column(col_name)?;
@@ -94,7 +97,10 @@ pub fn parse_weights_df(df: &DataFrame) -> Result<Vec<WeightEvent>, PolarsError>
             };
             weights.insert(Arc::from(col_name.to_string()), weight);
         }
-        events.push(WeightEvent { timestamp, weights });
+        events.push(WeightEvent {
+            timestamp: date,
+            weights,
+        });
     }
     Ok(events)
 }

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hawk-backtester"
-version = "0.2.5"
+version = "0.3.0"
 description = "High-performance portfolio backtester written in Rust"
 authors = ["Charles Maloney <charles.c.maloney@gmail.com>"]
 readme = "README.md"
@@ -23,7 +23,7 @@ build-backend = "maturin"
 
 [project]
 name = "hawk_backtester"
-version = "0.2.5"
+version = "0.3.0"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",

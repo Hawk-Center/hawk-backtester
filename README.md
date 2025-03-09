@@ -88,7 +88,7 @@ timestamp,AAPL,MSFT,GOOG,AMZN
 01/05/2023,0.25,0.35,0.20,0.15
 ...
 ```
-
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
