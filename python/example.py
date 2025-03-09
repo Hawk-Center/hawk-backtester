@@ -4,33 +4,41 @@ Example usage of the Hawk Backtester from Python.
 """
 
 import polars as pl
-from hawk_backtester import PyBacktester
+from hawk_backtester import HawkBacktester
 
 
 def main():
-    # Load price data from CSV
-    prices_df = pl.read_csv("data/prices.csv")
-
-    # Load weight data from CSV
-    weights_df = pl.read_csv("data/weights.csv")
+    # Load and prepare HFF data
+    hff_prices_df = pl.read_csv("data/hff_model.csv")
+    hff_prices_df = hff_prices_df.pivot(
+        index="date", columns="ticker", values="close"
+    ).sort("date")
+    # Forward fill null values
+    hff_prices_df = hff_prices_df.fill_null(strategy="forward")
+    # otherwise fill with 0
+    # Count the number of null values remaining
+    null_count = hff_prices_df.null_count()
+    print(f"Number of null values remaining: {null_count}")
+    # Drop rows with any null values
+    hff_prices_df = hff_prices_df.drop_nulls()
+    hff_weights_df = pl.read_csv("data/model_insights_rsi.csv")
 
     # Print input data
-    print("Price data:")
-    print(prices_df.head())
+    print("Input Data Preview:")
+    print("\nPrice data:")
+    print(hff_prices_df.head())
     print("\nWeight data:")
-    print(weights_df)
+    print(hff_weights_df)
 
-    # Create a backtester with initial value
-    backtester = PyBacktester(initial_value=10_000.0)
+    # Create and run backtester
+    backtester = HawkBacktester(initial_value=1_000_000.0)
+    results_df, metrics = backtester.run(hff_prices_df, hff_weights_df)
 
-    # Run the backtest
-    results_df, metrics = backtester.run(prices_df, weights_df)
-
-    # Display the results
-    print("\nBacktest results:")
+    # Display results
+    print("\nBacktest Results:")
     print(results_df)
 
-    # Display the metrics
+    # Display metrics
     print("\nPerformance Metrics:")
     print("-" * 50)
     print(f"Total Return: {metrics['total_return']:.2%}")
@@ -43,6 +51,14 @@ def main():
     print(f"Average Daily Return: {metrics['avg_daily_return']:.2%}")
     print(f"Win Rate: {metrics['win_rate']:.2%}")
     print(f"Number of Trades: {metrics['num_trades']}")
+    print(f"Number of Price Points: {metrics['num_price_points']}")
+    print(f"Number of Weight Events: {metrics['num_weight_events']}")
+    print(f"Parsing Time: {metrics['parsing_time_ms']:.2f} ms")
+    print(f"Simulation Time: {metrics['simulation_time_ms']:.2f} ms")
+    print(f"Total Time: {metrics['total_time_ms']:.2f} ms")
+    print(
+        f"Simulation Speed: {metrics['simulation_speed_dates_per_sec']:.2f} dates per second"
+    )
 
 
 if __name__ == "__main__":

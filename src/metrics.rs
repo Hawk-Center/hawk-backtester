@@ -1,4 +1,5 @@
 /// Performance metrics for a backtest
+
 #[derive(Debug, Clone)]
 pub struct BacktestMetrics {
     pub total_return: f64,

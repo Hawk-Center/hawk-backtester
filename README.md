@@ -6,7 +6,7 @@ A high-performance portfolio backtesting system implemented in Rust with Python 
 
 - Fast backtesting engine written in Rust
 - Python bindings using PyO3
-- Compatible with Polars DataFrames for efficient data handling
+- Compatible with Polars DataFrames 
 - Support for date-based rebalancing events
 
 ## Installation
@@ -83,9 +83,9 @@ The weight DataFrame should have the following structure:
 Example:
 
 ```
-timestamp,AAPL,MSFT,GOOG,AMZN
-01/01/2023,0.30,0.30,0.20,0.10
-01/05/2023,0.25,0.35,0.20,0.15
+date ,AAPL,MSFT,GOOG,AMZN
+2023/01/04,0.30,0.30,0.20,0.10
+2023/01/05,0.25,0.35,0.20,0.15
 ...
 ```
 ## License

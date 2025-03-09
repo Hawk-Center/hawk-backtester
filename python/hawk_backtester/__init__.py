@@ -5,6 +5,6 @@ This package provides a high-performance backtester implemented in Rust
 with Python bindings.
 """
 
-from .hawk_backtester import PyBacktester
+from .hawk_backtester import HawkBacktester
 
-__all__ = ["PyBacktester"]
+__all__ = ["HawkBacktester"]
