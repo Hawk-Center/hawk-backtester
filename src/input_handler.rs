@@ -2,16 +2,16 @@ use polars::prelude::SeriesTrait;
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-use time::OffsetDateTime;
+use time::Date;
 // Ensure that the `time` crate is compiled with features "formatting" and "parsing".
-use time::format_description::well_known::Rfc3339;
+use time::format_description;
 
 use crate::backtester::{PriceData, WeightEvent};
 
 /// Parses a price DataFrame into a vector of `PriceData`.
 ///
-/// The input DF must include a "timestamp" column (UTF8) and one column per security
-/// with closing prices.
+/// The input DF must include a "timestamp" column (UTF8) in m/d/y format (e.g., "01/15/2023")
+/// and one column per security with closing prices.
 ///
 /// # Errors
 /// Returns an error if the timestamp column is not present or cannot be parsed.
@@ -23,11 +23,16 @@ pub fn parse_price_df(df: &DataFrame) -> Result<Vec<PriceData>, PolarsError> {
     let column_names = df.get_column_names();
     let mut prices_vec = Vec::with_capacity(df.height());
 
+    // Create a format for parsing dates in m/d/y format
+    let date_format = format_description::parse("[month]/[day]/[year]").map_err(|e| {
+        PolarsError::ComputeError(format!("Error creating date format: {:?}", e).into())
+    })?;
+
     for i in 0..df.height() {
         let ts_str = ts_chunked
             .get(i)
             .ok_or_else(|| PolarsError::ComputeError("Missing timestamp value".into()))?;
-        let timestamp = OffsetDateTime::parse(ts_str, &Rfc3339).map_err(|e| {
+        let timestamp = Date::parse(ts_str, &date_format).map_err(|e| {
             PolarsError::ComputeError(format!("Error parsing date: {:?}", e).into())
         })?;
         let mut prices = HashMap::new();
@@ -52,8 +57,8 @@ pub fn parse_price_df(df: &DataFrame) -> Result<Vec<PriceData>, PolarsError> {
 
 /// Parses a weights DataFrame into a vector of `WeightEvent`.
 ///
-/// For each row, the DF must include a "timestamp" column (UTF8) and one column per security
-/// with weights (the value 0.0 or null may indicate no allocation for that security).
+/// For each row, the DF must include a "timestamp" column (UTF8) in m/d/y format (e.g., "01/15/2023")
+/// and one column per security with weights (the value 0.0 or null may indicate no allocation for that security).
 ///
 /// # Errors
 /// Returns an error if the timestamp column is not present or cannot be parsed.
@@ -63,11 +68,16 @@ pub fn parse_weights_df(df: &DataFrame) -> Result<Vec<WeightEvent>, PolarsError>
     let column_names = df.get_column_names();
     let mut events = Vec::with_capacity(df.height());
 
+    // Create a format for parsing dates in m/d/y format
+    let date_format = format_description::parse("[month]/[day]/[year]").map_err(|e| {
+        PolarsError::ComputeError(format!("Error creating date format: {:?}", e).into())
+    })?;
+
     for i in 0..df.height() {
         let ts_str = ts_chunked
             .get(i)
             .ok_or_else(|| PolarsError::ComputeError("Missing timestamp value".into()))?;
-        let timestamp = OffsetDateTime::parse(ts_str, &Rfc3339).map_err(|e| {
+        let timestamp = Date::parse(ts_str, &date_format).map_err(|e| {
             PolarsError::ComputeError(format!("Error parsing date: {:?}", e).into())
         })?;
         let mut weights = HashMap::new();

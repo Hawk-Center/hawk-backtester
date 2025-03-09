@@ -3,6 +3,13 @@ name = "hawk_backtester"
 version = "0.3.0"
 edition = "2021"
 
+[lib]
+name = "hawk_backtester"
+# "cdylib" is necessary for Python modules
+crate-type = ["cdylib"]
+
 [dependencies]
-polars = { version = "0.46.0", features = ["csv"] }
-time = { version = "0.3", features = ["formatting", "parsing"] }
+polars = { version = "0.46.0", features = ["csv", "dtype-datetime"] }
+time = { version = "0.3.39", features = ["formatting", "parsing"] }
+pyo3 = { version = "0.23.5", features = ["extension-module"] }
+pyo3-polars = "0.20.0"

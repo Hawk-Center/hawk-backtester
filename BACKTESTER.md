@@ -30,14 +30,14 @@ The Rust Backtester is a simulation tool designed to model the evolution of a po
 Models a snapshot of market prices for various assets at a given timestamp.
 
 **Structure:**
-- `timestamp`: An `OffsetDateTime` representing the date and time of the market snapshot.
+- `timestamp`: A `Date` representing the date of the market snapshot.
 - `prices`: A `HashMap<Arc<str>, f64>` mapping asset symbols (e.g., "AAPL") to their respective prices.
 
 **Code Example:**
 ```rust
 #[derive(Debug, Clone)]
 pub struct PriceData {
-    pub timestamp: OffsetDateTime,
+    pub timestamp: Date,
     pub prices: HashMap<Arc<str>, f64>,
 }
 ```
@@ -48,14 +48,14 @@ pub struct PriceData {
 Defines a rebalancing event, indicating the desired allocation percentages for assets.
 
 **Structure:**
-- `timestamp`: The timestamp when the event should trigger.
+- `timestamp`: The date when the event should trigger.
 - `weights`: A `HashMap<Arc<str>, f64>` mapping asset symbols to allocation weights. These weights should sum to less than or equal to 1.0, with any remaining proportion held as cash.
 
 **Code Example:**
 ```rust
 #[derive(Debug, Clone)]
 pub struct WeightEvent {
-    pub timestamp: OffsetDateTime,
+    pub timestamp: Date,
     pub weights: HashMap<Arc<str>, f64>,
 }
 ```
@@ -177,7 +177,7 @@ impl Backtester {
 - **Type:** `Vec<PriceData>`
 - **Format:**  
   Each element should be created with:
-  - `timestamp`: An `OffsetDateTime` (from the `time` crate).
+  - `timestamp`: A `Date` (from the `time` crate), formatted as Month/Day/Year (e.g., "01/15/2023").
   - `prices`: A `HashMap<Arc<str>, f64>` where keys are asset identifiers and values are their respective prices.
 
 ### Portfolio Weights (WeightEvent)
@@ -185,14 +185,14 @@ impl Backtester {
 - **Type:** `Vec<WeightEvent>`
 - **Format:**  
   Each `WeightEvent` should contain:
-  - `timestamp`: The point in time when rebalancing should occur.
+  - `timestamp`: The date when rebalancing should occur, formatted as Month/Day/Year (e.g., "01/15/2023").
   - `weights`: A `HashMap<Arc<str>, f64>` mapping assets to desired allocations. Weights are expressed as decimals (e.g., 0.7 for 70%).
 
 ### User-Configurable Parameters
 
 - **Initial Portfolio Value:** A `f64` value representing the starting cash available (e.g., 10,000.0).
 - **Chronology of Data:**  
-  Both `prices` and `weight_events` must be sorted in chronological order (ascending timestamps) for correct simulation operation.
+  Both `prices` and `weight_events` must be sorted in chronological order (ascending dates) for correct simulation operation.
 
 ## Output Structure
 
@@ -200,7 +200,7 @@ impl Backtester {
 
 Each simulation step returns a `BacktestResult` that encapsulates:
 
-- `timestamp`: The market data snapshot's date and time.
+- `timestamp`: The market data snapshot's date.
 - `portfolio_value`: The combined total of cash and updated asset positions.
 - `daily_return`: The computed daily performance, expressed as a decimal (e.g., 0.01 for a +1% return).
 
@@ -208,120 +208,8 @@ Each simulation step returns a `BacktestResult` that encapsulates:
 ```rust
 #[derive(Debug)]
 pub struct BacktestResult {
-    pub timestamp: OffsetDateTime,
+    pub timestamp: Date,
     pub portfolio_value: f64,
     pub daily_return: f64, // Decimal representation of daily return
 }
 ```
-
-### Logging & Console Output
-
-When running the simulation via the main binary (`src/main.rs`), the backtester prints results for each day in the following format:
-```
-Time: 2023-10-10T12:00:00Z, Portfolio Value: 1092.50, Daily Return: 1.50%
-```
-This output is useful to monitor performance trends and daily returns.
-
-## Extending and Modifying the Backtester
-
-### Key Areas for Modifications
-
-- **Rebalancing Logic:**  
-  - If a different rebalancing strategy is desired (e.g., pre-market instead of end-of-day), adjust the order in which the positions are updated and the weight event is applied inside the `run()` method.
-  - Modify how cash and asset allocations are computed during a rebalancing event.
-
-- **Position Management:**  
-  - Enhance the `PortfolioState::update_positions()` method to account for factors like transaction fees, slippage, or dividends.
-  - Consider including more sophisticated risk metrics or performance indicators.
-
-- **Input Data Parsing:**  
-  - If integrating live or external historical data, you may want to add modules to import and transform data into the expected `PriceData` and `WeightEvent` formats.
-
-- **Output Enhancements:**  
-  - Extend `BacktestResult` to include additional performance metrics, such as cumulative returns, volatility, or drawdowns.
-  - Integrate with visualization libraries for graphical reporting.
-
-### Future Enhancements
-
-- **Live Data Integration:**  
-  - Connect the backtester to real-time or historical market data feeds.
-  
-- **Command-Line Interface (CLI):**  
-  - Create a CLI to allow users to specify parameters, input files, and simulation settings interactively.
-
-- **Web Dashboard:**  
-  - Develop a front-end for visualizing backtest results and comparing different strategies.
-
-## Example Usage
-
-### Main Simulation Entry (src/main.rs)
-
-Below is an example of how to set up and run a simulation using the backtester:
-```rust
-pub mod backtester;
-
-use backtester::{Backtester, PriceData, WeightEvent};
-use std::collections::HashMap;
-use std::sync::Arc;
-use time::{Duration, OffsetDateTime};
-
-fn main() {
-    // Create example price data for two days.
-    let now = OffsetDateTime::now_utc();
-    let prices = vec![
-        PriceData {
-            timestamp: now,
-            prices: {
-                let mut map = HashMap::new();
-                // Example assets with their prices.
-                map.insert(Arc::from("AAPL"), 150.0);
-                map.insert(Arc::from("GOOG"), 2500.0);
-                map
-            },
-        },
-        PriceData {
-            timestamp: now + Duration::days(1),
-            prices: {
-                let mut map = HashMap::new();
-                // Updated prices for the next day.
-                map.insert(Arc::from("AAPL"), 155.0);
-                map.insert(Arc::from("GOOG"), 2550.0);
-                map
-            },
-        },
-    ];
-
-    // Create a rebalancing event with portfolio weights.
-    let weight_events = vec![WeightEvent {
-        timestamp: now,
-        weights: {
-            let mut map = HashMap::new();
-            // Allocations: 70% in AAPL, 20% in GOOG (remaining 10% in cash).
-            map.insert(Arc::from("AAPL"), 0.7);
-            map.insert(Arc::from("GOOG"), 0.2);
-            map
-        },
-    }];
-
-    // Instantiate and run the backtester.
-    let backtester = Backtester {
-        prices,
-        weight_events,
-        initial_value: 10_000.0,
-    };
-
-    let results = backtester.run();
-    for res in results {
-        println!(
-            "Time: {}, Portfolio Value: {:.2}, Daily Return: {:.2}%",
-            res.timestamp,
-            res.portfolio_value,
-            res.daily_return * 100.0
-        );
-    }
-}
-```
-
-## Conclusion
-
-This documentation has outlined the architecture, core functionality, and usage of the Rust Backtester, detailing each key component, the expected input/output formats, and how to extend or modify the simulation logic. Future developers can use this guide to easily understand or enhance the tool to better suit their portfolio simulation requirements.

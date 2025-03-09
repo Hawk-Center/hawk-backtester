@@ -1,13 +1,10 @@
-from .hawk_backtester import run_backtest  # Import the Rust function
-from .utils import prepare_price_data, prepare_weight_data
-from .metrics import calculate_sharpe_ratio, calculate_metrics
-from .backtester import PortfolioBacktester
+"""
+Hawk Backtester: A fast portfolio backtesting system.
 
-__all__ = [
-    "run_backtest",
-    "prepare_price_data",
-    "prepare_weight_data",
-    "calculate_sharpe_ratio",
-    "calculate_metrics",
-    "PortfolioBacktester",
-]
+This package provides a high-performance backtester implemented in Rust
+with Python bindings.
+"""
+
+from .hawk_backtester import PyBacktester
+
+__all__ = ["PyBacktester"]

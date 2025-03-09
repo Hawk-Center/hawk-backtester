@@ -1,12 +1,13 @@
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-use time::OffsetDateTime;
+use time::Date;
+use time::{Duration, OffsetDateTime};
 
 /// Represents a snapshot of market prices for various assets at a given timestamp.
 #[derive(Debug, Clone)]
 pub struct PriceData {
-    pub timestamp: OffsetDateTime,
+    pub timestamp: Date,
     pub prices: HashMap<Arc<str>, f64>,
 }
 
@@ -14,7 +15,7 @@ pub struct PriceData {
 /// The weights should sum to less than or equal to 1.0; any remainder is held as cash.
 #[derive(Debug, Clone)]
 pub struct WeightEvent {
-    pub timestamp: OffsetDateTime,
+    pub timestamp: Date,
     pub weights: HashMap<Arc<str>, f64>,
 }
 
@@ -164,7 +165,6 @@ impl Backtester {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use time::{Duration, OffsetDateTime};
 
     /// Helper method to create a PriceData instance.
     fn make_price_data(timestamp: OffsetDateTime, prices: Vec<(&str, f64)>) -> PriceData {
@@ -173,7 +173,7 @@ mod tests {
             .map(|(ticker, price)| (Arc::from(ticker), price))
             .collect();
         PriceData {
-            timestamp,
+            timestamp: timestamp.date(),
             prices: prices_map,
         }
     }
@@ -185,7 +185,7 @@ mod tests {
             .map(|(ticker, weight)| (Arc::from(ticker), weight))
             .collect();
         WeightEvent {
-            timestamp,
+            timestamp: timestamp.date(),
             weights: weights_map,
         }
     }
