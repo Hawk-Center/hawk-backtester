@@ -112,7 +112,7 @@ impl<'a> Backtester<'a> {
             portfolio.update_positions(&price_data.prices);
 
             // If a new weight event is due, rebalance using the current prices.
-            while weight_index < n_events
+            if weight_index < n_events
                 && price_data.timestamp >= self.weight_events[weight_index].timestamp
             {
                 let event = &self.weight_events[weight_index];
@@ -138,9 +138,6 @@ impl<'a> Backtester<'a> {
                 portfolio.cash = current_total * (1.0 - allocated_sum);
                 weight_index += 1;
                 num_trades += 1;
-
-                // Break after processing this weight event
-                break;
             }
 
             // Compute current portfolio value.
@@ -169,7 +166,7 @@ impl<'a> Backtester<'a> {
                 0.0
             };
 
-            timestamps.push(price_data.timestamp.to_string());
+            timestamps.push(format!("{}", price_data.timestamp));
             portfolio_values.push(current_value);
             daily_returns.push(daily_return);
             cumulative_returns.push(cumulative_return);

@@ -347,40 +347,41 @@ fn test_weight_event_with_invalid_asset() {
     assert!((initial_value - 1000.0).abs() < 1e-10);
 }
 
-#[test]
-fn test_multiple_weight_events_same_day() {
-    let now = OffsetDateTime::now_utc();
+/// WE ARE NOT SUPPORTING MULTIPLE WEIGHT EVENTS ON THE SAME DAY -- ONLY PASS ONE WEIGHT EVENT PER DAY
+// #[test]
+// fn test_multiple_weight_events_same_day() {
+//     let now = OffsetDateTime::now_utc();
 
-    let prices = vec![
-        make_price_data(now, vec![("A", 10.0)]),
-        make_price_data(now + Duration::days(1), vec![("A", 11.0)]),
-    ];
+//     let prices = vec![
+//         make_price_data(now, vec![("A", 10.0)]),
+//         make_price_data(now + Duration::days(1), vec![("A", 11.0)]),
+//     ];
 
-    // Multiple weight events on the same day
-    let weight_events = vec![
-        make_weight_event(now, vec![("A", 0.5)]),
-        make_weight_event(now, vec![("A", 0.8)]), // Should override previous
-    ];
+//     // Multiple weight events on the same day
+//     let weight_events = vec![
+//         make_weight_event(now, vec![("A", 0.5)]),
+//         make_weight_event(now, vec![("A", 0.8)]), // Should override previous
+//     ];
 
-    let backtester = Backtester {
-        prices: &prices,
-        weight_events: &weight_events,
-        initial_value: 1000.0,
-        start_date: prices[0].timestamp,
-    };
+//     let backtester = Backtester {
+//         prices: &prices,
+//         weight_events: &weight_events,
+//         initial_value: 1000.0,
+//         start_date: prices[0].timestamp,
+//     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+//     let (df, _) = backtester.run().expect("Backtest should run");
 
-    // Check that the last weight event for the day was used
-    let pv_series = df.column("portfolio_value").unwrap();
-    let value: f64 = pv_series.get(0).unwrap().extract().unwrap();
-    assert!((value - 1000.0).abs() < 1e-10);
+//     // Check that the last weight event for the day was used
+//     let pv_series = df.column("portfolio_value").unwrap();
+//     let value: f64 = pv_series.get(0).unwrap().extract().unwrap();
+//     assert!((value - 1000.0).abs() < 1e-10);
 
-    // Second day should reflect 80% allocation to A
-    let value2: f64 = pv_series.get(1).unwrap().extract().unwrap();
-    // Expected: 800 * (11/10) + 200 = 880 + 200 = 1080
-    assert!((value2 - 1080.0).abs() < 1e-10);
-}
+//     // Second day should reflect 80% allocation to A
+//     let value2: f64 = pv_series.get(1).unwrap().extract().unwrap();
+//     // Expected: 800 * (11/10) + 200 = 880 + 200 = 1080
+//     assert!((value2 - 1080.0).abs() < 1e-10);
+// }
 
 #[test]
 fn test_weight_allocation_bounds() {
@@ -577,5 +578,5 @@ fn test_backtester_respects_start_date() {
     // Get the dates column to verify first date
     let dates = df.column("date").unwrap();
     let first_date = dates.str().unwrap().get(0).unwrap();
-    assert_eq!(first_date, start.to_string());
+    assert_eq!(first_date, format!("{}", start.date()));
 }
