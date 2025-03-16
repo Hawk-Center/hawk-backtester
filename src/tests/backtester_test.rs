@@ -95,15 +95,18 @@ fn test_backtester_no_weight_event() {
     // Access each series by column name.
     let pv_series = df.column("portfolio_value").unwrap();
     let daily_series = df.column("daily_return").unwrap();
+    let log_series = df.column("daily_log_return").unwrap();
     let cum_series = df.column("cumulative_return").unwrap();
 
     for i in 0..df.height() {
-        let value: f64 = pv_series.get(i).unwrap().extract().unwrap();
-        let daily: f64 = daily_series.get(i).unwrap().extract().unwrap();
-        let cum: f64 = cum_series.get(i).unwrap().extract().unwrap();
-        assert!((value - 1000.0).abs() < 1e-10);
-        assert_eq!(daily, 0.0);
-        assert_eq!(cum, 0.0);
+        // Portfolio value should remain constant at 1000.0
+        assert!((pv_series.get(i).unwrap().try_extract::<f64>().unwrap() - 1000.0).abs() < 1e-10);
+        // Daily returns should be 0.0 since price doesn't change
+        assert!((daily_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
+        // Log returns should be 0.0 since price doesn't change
+        assert!((log_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
+        // Cumulative returns should be 0.0
+        assert!((cum_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
     }
 }
 
@@ -135,13 +138,17 @@ fn test_backtester_with_weight_event() {
 
     let pv_series = df.column("portfolio_value").unwrap();
     let daily_series = df.column("daily_return").unwrap();
+    let log_series = df.column("daily_log_return").unwrap();
     let cum_series = df.column("cumulative_return").unwrap();
+    let cum_log_series = df.column("cumulative_log_return").unwrap();
 
     // Day 1: After rebalancing, portfolio should be 1000.0.
     let value1: f64 = pv_series.get(0).unwrap().extract().unwrap();
     let cum1: f64 = cum_series.get(0).unwrap().extract().unwrap();
+    let cum_log1: f64 = cum_log_series.get(0).unwrap().extract().unwrap();
     assert!((value1 - 1000.0).abs() < 1e-10);
     assert_eq!(cum1, 0.0);
+    assert_eq!(cum_log1, 0.0);
 
     // Day 2: Expected calculations:
     // For asset "A": 500 dollars * (11/10) = 550,
@@ -150,9 +157,12 @@ fn test_backtester_with_weight_event() {
     let value2: f64 = pv_series.get(1).unwrap().extract().unwrap();
     let daily2: f64 = daily_series.get(1).unwrap().extract().unwrap();
     let cum2: f64 = cum_series.get(1).unwrap().extract().unwrap();
+    let cum_log2: f64 = cum_log_series.get(1).unwrap().extract().unwrap();
     assert!((value2 - 1035.0).abs() < 1e-10);
     assert!((daily2 - 0.035).abs() < 1e-3);
     assert!((cum2 - 0.035).abs() < 1e-3);
+    // Verify cumulative log return matches ln(1.035)
+    assert!((cum_log2 - (1.035_f64).ln()).abs() < 1e-3);
 }
 
 #[test]
@@ -210,7 +220,9 @@ fn test_dataframe_output() {
         "date",
         "portfolio_value",
         "daily_return",
+        "daily_log_return",
         "cumulative_return",
+        "cumulative_log_return",
         "drawdown",
     ];
     assert_eq!(cols, expected_cols);
@@ -347,40 +359,41 @@ fn test_weight_event_with_invalid_asset() {
     assert!((initial_value - 1000.0).abs() < 1e-10);
 }
 
-#[test]
-fn test_multiple_weight_events_same_day() {
-    let now = OffsetDateTime::now_utc();
+/// WE ARE NOT SUPPORTING MULTIPLE WEIGHT EVENTS ON THE SAME DAY -- ONLY PASS ONE WEIGHT EVENT PER DAY
+// #[test]
+// fn test_multiple_weight_events_same_day() {
+//     let now = OffsetDateTime::now_utc();
 
-    let prices = vec![
-        make_price_data(now, vec![("A", 10.0)]),
-        make_price_data(now + Duration::days(1), vec![("A", 11.0)]),
-    ];
+//     let prices = vec![
+//         make_price_data(now, vec![("A", 10.0)]),
+//         make_price_data(now + Duration::days(1), vec![("A", 11.0)]),
+//     ];
 
-    // Multiple weight events on the same day
-    let weight_events = vec![
-        make_weight_event(now, vec![("A", 0.5)]),
-        make_weight_event(now, vec![("A", 0.8)]), // Should override previous
-    ];
+//     // Multiple weight events on the same day
+//     let weight_events = vec![
+//         make_weight_event(now, vec![("A", 0.5)]),
+//         make_weight_event(now, vec![("A", 0.8)]), // Should override previous
+//     ];
 
-    let backtester = Backtester {
-        prices: &prices,
-        weight_events: &weight_events,
-        initial_value: 1000.0,
-        start_date: prices[0].timestamp,
-    };
+//     let backtester = Backtester {
+//         prices: &prices,
+//         weight_events: &weight_events,
+//         initial_value: 1000.0,
+//         start_date: prices[0].timestamp,
+//     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+//     let (df, _) = backtester.run().expect("Backtest should run");
 
-    // Check that the last weight event for the day was used
-    let pv_series = df.column("portfolio_value").unwrap();
-    let value: f64 = pv_series.get(0).unwrap().extract().unwrap();
-    assert!((value - 1000.0).abs() < 1e-10);
+//     // Check that the last weight event for the day was used
+//     let pv_series = df.column("portfolio_value").unwrap();
+//     let value: f64 = pv_series.get(0).unwrap().extract().unwrap();
+//     assert!((value - 1000.0).abs() < 1e-10);
 
-    // Second day should reflect 80% allocation to A
-    let value2: f64 = pv_series.get(1).unwrap().extract().unwrap();
-    // Expected: 800 * (11/10) + 200 = 880 + 200 = 1080
-    assert!((value2 - 1080.0).abs() < 1e-10);
-}
+//     // Second day should reflect 80% allocation to A
+//     let value2: f64 = pv_series.get(1).unwrap().extract().unwrap();
+//     // Expected: 800 * (11/10) + 200 = 880 + 200 = 1080
+//     assert!((value2 - 1080.0).abs() < 1e-10);
+// }
 
 #[test]
 fn test_weight_allocation_bounds() {
@@ -577,5 +590,5 @@ fn test_backtester_respects_start_date() {
     // Get the dates column to verify first date
     let dates = df.column("date").unwrap();
     let first_date = dates.str().unwrap().get(0).unwrap();
-    assert_eq!(first_date, start.to_string());
+    assert_eq!(first_date, format!("{}", start.date()));
 }

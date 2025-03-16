@@ -49,7 +49,7 @@ impl HawkBacktester {
         py: Python<'py>,
         prices_df: PyDataFrame,
         weights_df: PyDataFrame,
-    ) -> PyResult<(PyDataFrame, Py<PyDict>)> {
+    ) -> PyResult<Py<PyAny>> {
         let start_time = Instant::now();
 
         // Extract the underlying Polars DataFrame references
@@ -121,8 +121,47 @@ impl HawkBacktester {
             (prices.len() as f64) / (simulation_time.as_secs_f64()),
         )?;
 
-        // Return tuple of DataFrame and metrics dictionary
-        Ok((PyDataFrame(results_df), metrics_dict.into()))
+        // Convert metrics dictionary to DataFrame
+        let metrics_df = DataFrame::new(vec![
+            Series::new(
+                "metric".into(),
+                metrics_dict
+                    .keys()
+                    .iter()
+                    .map(|k| k.extract::<String>().unwrap())
+                    .collect::<Vec<_>>(),
+            )
+            .into(),
+            Series::new(
+                "value".into(),
+                metrics_dict
+                    .values()
+                    .iter()
+                    .map(|v| v.extract::<f64>().unwrap())
+                    .collect::<Vec<_>>(),
+            )
+            .into(),
+        ])
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to create metrics DataFrame: {}",
+                e
+            ))
+        })?;
+
+        // print the metrics_df to check the output
+        println!("Metrics DataFrame: {}", metrics_df);
+
+        // Return the results DataFrame and metrics DataFrame together in a dictionary
+        let return_dict = PyDict::new(py);
+        return_dict.set_item("backtest_results", PyDataFrame(results_df))?;
+        return_dict.set_item("backtest_metrics", PyDataFrame(metrics_df))?;
+
+        // print the return_dict to check the output
+        println!("Return Dictionary: {}", return_dict);
+
+        // Return the results dictionary
+        Ok(return_dict.into())
     }
 }
 
