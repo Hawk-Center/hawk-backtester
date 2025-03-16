@@ -81,14 +81,18 @@ impl<'a> Backtester<'a> {
     ///     - "date": the simulation's timestamp as a string (ISO 8601 format)
     ///     - "portfolio_value": the total portfolio value at the timestamp
     ///     - "daily_return": the daily return (in decimal form)
+    ///     - "daily_log_return": the daily log return (in decimal form)
     ///     - "cumulative_return": the compounded return from the start
+    ///     - "cumulative_log_return": the cumulative log return from the start
     ///     - "drawdown": the percentage decline from the peak portfolio value
     ///  - BacktestMetrics containing various performance metrics
     pub fn run(&self) -> Result<(DataFrame, BacktestMetrics), PolarsError> {
         let mut timestamps = Vec::new();
         let mut portfolio_values = Vec::new();
         let mut daily_returns = Vec::new();
+        let mut daily_log_returns = Vec::new();
         let mut cumulative_returns = Vec::new();
+        let mut cumulative_log_returns = Vec::new();
         let mut drawdowns = Vec::new();
 
         let mut portfolio = PortfolioState {
@@ -159,9 +163,21 @@ impl<'a> Backtester<'a> {
             } else {
                 0.0
             };
+            // Compute the daily log return
+            let daily_log_return = if last_value > 0.0 {
+                (current_value / last_value).ln()
+            } else {
+                0.0
+            };
             // Compute the cumulative return compared to the initial portfolio value.
             let cumulative_return = if self.initial_value > 0.0 {
                 (current_value / self.initial_value) - 1.0
+            } else {
+                0.0
+            };
+            // Compute the cumulative log return
+            let cumulative_log_return = if self.initial_value > 0.0 {
+                (current_value / self.initial_value).ln()
             } else {
                 0.0
             };
@@ -169,7 +185,9 @@ impl<'a> Backtester<'a> {
             timestamps.push(format!("{}", price_data.timestamp));
             portfolio_values.push(current_value);
             daily_returns.push(daily_return);
+            daily_log_returns.push(daily_log_return);
             cumulative_returns.push(cumulative_return);
+            cumulative_log_returns.push(cumulative_log_return);
             drawdowns.push(drawdown);
 
             last_value = current_value;
@@ -182,14 +200,19 @@ impl<'a> Backtester<'a> {
         let date_series = Series::new("date".into(), timestamps);
         let portfolio_value_series = Series::new("portfolio_value".into(), portfolio_values);
         let daily_return_series = Series::new("daily_return".into(), daily_returns.clone());
+        let daily_log_return_series = Series::new("daily_log_return".into(), daily_log_returns);
         let cumulative_return_series = Series::new("cumulative_return".into(), cumulative_returns);
+        let cumulative_log_return_series =
+            Series::new("cumulative_log_return".into(), cumulative_log_returns);
         let drawdown_series = Series::new("drawdown".into(), drawdowns.clone());
 
         let df = DataFrame::new(vec![
             date_series.into(),
             portfolio_value_series.into(),
             daily_return_series.into(),
+            daily_log_return_series.into(),
             cumulative_return_series.into(),
+            cumulative_log_return_series.into(),
             drawdown_series.into(),
         ])?;
 

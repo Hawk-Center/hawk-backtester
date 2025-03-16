@@ -88,6 +88,12 @@ date ,AAPL,MSFT,GOOG,AMZN
 2023/01/05,0.25,0.35,0.20,0.15
 ...
 ```
+To Publish the project (Developer)
+```bash
+PYPI_API_TOKEN="your-token-here"
+maturin publish --username __token__ --password $PYPI_API_TOKEN
+```
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
