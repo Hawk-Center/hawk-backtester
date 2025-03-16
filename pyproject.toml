@@ -23,7 +23,7 @@ build-backend = "maturin"
 
 [project]
 name = "hawk_backtester"
-version = "0.3.0"
+version = "0.3.1"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
