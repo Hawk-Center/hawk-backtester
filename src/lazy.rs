@@ -1,4 +1,6 @@
-use polars::lazy::dsl::{all, col};
+use std::f64::consts::E;
+
+use polars::lazy::dsl::{all, col, lit, when};
 use polars::prelude::*;
 
 fn join_dataframes(
@@ -13,7 +15,16 @@ fn join_dataframes(
     let df2_lazy = df2.clone().lazy();
 
     // Parse dates to a consistent format
-    let parse_date = col(join_col).cast(DataType::Date);
+    let options = StrptimeOptions {
+        format: Some("%Y-%m-%d".into()),
+        strict: false,
+        exact: true,
+        cache: true,
+    };
+
+    let parse_date = col(join_col)
+        .str()
+        .strptime(DataType::Date, options, lit("raise"));
 
     let df1_lazy = df1_lazy.with_column(parse_date.clone().alias(join_col));
     let df2_lazy = df2_lazy.with_column(parse_date.alias(join_col));
@@ -61,10 +72,18 @@ fn join_dataframes(
 pub fn lazy_backtest(prices_df: &DataFrame, weights_df: &DataFrame) -> PolarsResult<LazyFrame> {
     let joined = join_dataframes(prices_df, weights_df, "date", "price", "weight")?;
 
-    println!(
-        "joined: {:?}",
-        joined.clone().collect().unwrap().head(Some(10))
-    );
+    let joined = joined
+        .with_column(
+            (col("AAPL_price").log(E) - col("AAPL_price").shift(lit(1)).log(E))
+                .alias("AAPL_log_return"),
+        )
+        .with_column(lit(0.0f64).alias("AAPL_pos"))
+        .with_column(
+            when(col("AAPL_weight").is_null())
+                .then(col("AAPL_pos") * col("AAPL_log_return").exp())
+                .otherwise(col("AAPL_price") * col("AAPL_weight"))
+                .alias("AAPL_pos"),
+        );
 
     Ok(joined)
 }

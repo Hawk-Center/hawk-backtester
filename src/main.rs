@@ -21,25 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let weights_df = CsvReader::new(weights_file).finish()?;
 
     let lazy_df = lazy::lazy_backtest(&price_df, &weights_df)?;
+    println!("{:?}", lazy_df.collect().unwrap());
 
-    // Convert DataFrames into the internal types.
-    let prices: Vec<PriceData> = parse_price_df(&price_df)?;
-    let weight_events: Vec<WeightEvent> = parse_weights_df(&weights_df)?;
-
-    // Get start date before moving prices
-    let start_date = weight_events[0].timestamp;
-
-    // Create the backtester.
-    let backtester = Backtester {
-        prices: &prices,
-        weight_events: &weight_events,
-        initial_value: 10_000.0, // For defult testing purposes, use 10_000.0.
-        start_date,
-    };
-
-    // Run the simulation and output the DataFrame tail.
-    let (df, metrics) = backtester.run()?;
-    println!("Tail of backtest results:\n{:?}", df.tail(Some(5)));
-    println!("Metrics:\n{:?}", metrics);
     Ok(())
 }

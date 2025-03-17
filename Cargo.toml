@@ -3,8 +3,7 @@ name = "hawk_backtester"
 version = "0.3.1"
 edition = "2021"
 
-
 [dependencies]
-polars = { version = "0.46.0", features = ["csv", "dtype-datetime", "lazy"] }
+polars = { version = "0.46.0", features = ["csv", "dtype-datetime", "lazy", "strings", "log"] }
 time = { version = "0.3.39", features = ["formatting", "parsing"] }
 
