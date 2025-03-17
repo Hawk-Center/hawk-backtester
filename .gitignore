@@ -61,3 +61,8 @@ EOF
 
 # data directory
 data/
+
+cargo.lock
+flake.lock
+.direnv/
+.envrc
