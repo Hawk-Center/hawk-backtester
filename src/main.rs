@@ -3,6 +3,8 @@ pub mod input_handler;
 pub mod metrics;
 pub mod tests;
 
+mod lazy;
+
 use backtester::{Backtester, PriceData, WeightEvent};
 use input_handler::{parse_price_df, parse_weights_df};
 use polars::prelude::*;
@@ -17,6 +19,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // For Testing purposes, use the data/weights.csv file.
     let weights_file = File::open("data/weights.csv")?;
     let weights_df = CsvReader::new(weights_file).finish()?;
+
+    let lazy_df = lazy::lazy_backtest(&price_df, &weights_df)?;
 
     // Convert DataFrames into the internal types.
     let prices: Vec<PriceData> = parse_price_df(&price_df)?;
