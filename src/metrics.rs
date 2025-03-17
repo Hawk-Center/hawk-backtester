@@ -44,8 +44,8 @@ impl BacktestMetrics {
         let daily_volatility = variance.sqrt();
         let annualized_volatility = daily_volatility * (trading_days_per_year as f64).sqrt();
 
-        // Sharpe Ratio (assuming risk-free rate of 0.02)
-        let risk_free_rate = 0.02;
+        // Sharpe Ratio (assuming risk-free rate of 0.00)
+        let risk_free_rate = 0.00;
         let sharpe_ratio = if annualized_volatility != 0.0 {
             (annualized_return - risk_free_rate) / annualized_volatility
         } else {

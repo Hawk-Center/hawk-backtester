@@ -150,7 +150,7 @@ impl HawkBacktester {
         })?;
 
         // print the metrics_df to check the output
-        println!("Metrics DataFrame: {}", metrics_df);
+        //  println!("Metrics DataFrame: {}", metrics_df);
 
         // Return the results DataFrame and metrics DataFrame together in a dictionary
         let return_dict = PyDict::new(py);
@@ -158,7 +158,7 @@ impl HawkBacktester {
         return_dict.set_item("backtest_metrics", PyDataFrame(metrics_df))?;
 
         // print the return_dict to check the output
-        println!("Return Dictionary: {}", return_dict);
+        // println!("Return Dictionary: {}", return_dict);
 
         // Return the results dictionary
         Ok(return_dict.into())
