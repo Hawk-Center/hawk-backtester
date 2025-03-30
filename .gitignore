@@ -62,3 +62,4 @@ EOF
 # data directory
 data/
 outputs/
+.envrc
