@@ -11,7 +11,7 @@ A high-performance portfolio backtesting system implemented in Rust with Python 
 
 ## Installation
 
-### From PyPI (not yet available)
+### From PyPI
 
 ```bash
 pip install hawk_backtester
@@ -37,24 +37,31 @@ Here's a simple example of how to use the backtester:
 
 ```python
 import polars as pl
-from hawk_backtester import PyBacktester
+from hawk_backtester import HawkBacktester
 
-# Load your price data with a timestamp column (MM/DD/YYYY format)
+# Load your price data with a timestamp column (YYYY-MM-DD format)
 # and columns for each asset's price
 prices_df = pl.read_csv("data/prices.csv")
 
-# Load your weight data with a timestamp column (MM/DD/YYYY format)
+# Load your weight data with a timestamp column (YYYY-MM-DD format)
 # and columns for each asset's weight
 weights_df = pl.read_csv("data/weights.csv")
 
-# Create a backtester with an initial portfolio value
-backtester = PyBacktester(initial_value=10_000.0)
+# Recommended data cleaning process
+### For Prices, forward fill first to avoid look-ahead, then backfill missing data
+prices_df = prices_df.fill_null(strategy="forward")
+prices_df = prices_df.fill_null(strategy="backward")
+### For weights, drop null values or fill with 0.0, depending on the desired behavior.
+weights_df = weights_df.drop_nulls()
+#  weights_df = weights_df.fill_null(0.0)
 
-# Run the backtest
+# Initalize backtester, and run backtest
+backtester = HawkBacktester(initial_value=1)
 results = backtester.run(prices_df, weights_df)
 
-# Display results
-print(results)
+# Parse the result dictionary
+results_df = results["backtest_results"]
+metrics_df = results["backtest_metrics"]
 ```
 
 ## Input Data Format
@@ -62,7 +69,7 @@ print(results)
 ### Price Data
 
 The price DataFrame should have the following structure:
-- A `timestamp` column with dates in MM/DD/YYYY format (e.g., "01/15/2023")
+- A `date` column with dates in YYYY-MM-DD format (e.g., "2023-01-01")
 - One column per asset with the price at that timestamp
 
 Example:
