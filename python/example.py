@@ -7,7 +7,103 @@ import polars as pl
 from hawk_backtester import HawkBacktester
 
 
+def test_input():
+    df = pl.read_csv("data/Updated_Backtester_Input.csv", infer_schema_length=1000)
+    prices_df = df.select(
+        [
+            "date",
+            "SLV_adjClose",
+            "SPY_adjClose",
+            "GLD_adjClose",
+            "TLT_adjClose",
+            "USO_adjClose",
+            "UNG_adjClose",
+        ]
+    )
+    # Rename price columns to match the asset names expected by the backtester
+    prices_df = prices_df.rename(
+        {
+            "SLV_adjClose": "SLV",
+            "SPY_adjClose": "SPY",
+            "GLD_adjClose": "GLD",
+            "TLT_adjClose": "TLT",
+            "USO_adjClose": "USO",
+            "UNG_adjClose": "UNG",
+        }
+    )
+    prices_df = prices_df.fill_null(strategy="forward")
+    prices_df = prices_df.fill_null(strategy="backward")
+
+    weights_df = df.select(
+        ["date", "SLV_wgt", "SPY_wgt", "GLD_wgt", "TLT_wgt", "USO_wgt", "UNG_wgt"]
+    )
+    # Rename weight columns to match the asset names expected by the backtester
+    weights_df = weights_df.rename(
+        {
+            "SLV_wgt": "SLV",
+            "SPY_wgt": "SPY",
+            "GLD_wgt": "GLD",
+            "TLT_wgt": "TLT",
+            "USO_wgt": "USO",
+            "UNG_wgt": "UNG",
+        }
+    )
+    # Drop Nulls
+    # Drop rows with null values in the weights dataframe
+    print(weights_df)
+    weights_df = weights_df.drop_nulls()
+    print(weights_df)
+
+    backtester = HawkBacktester(initial_value=1)
+    results = backtester.run(prices_df, weights_df)
+    print(results)
+
+    # Save results to CSV files
+    results_df = results["backtest_results"]
+    metrics_df = results["backtest_metrics"]
+
+    # Save backtest results and metrics to CSV
+    results_df.write_csv("backtest_results.csv")
+    metrics_df.write_csv("backtest_metrics.csv")
+
+    print(f"Results saved to backtest_results.csv and backtest_metrics.csv")
+
+
+
+
+
+
+
+
+
+
 def main():
+    df = pl.read_csv("data/spy_prices_test.csv", infer_schema_length=1000)
+    print(df)
+    prices_df = df.select(["date", "Sim Spy Prices"])
+    weights_df = df.select(["date", "AMMA_combined"])
+    print(prices_df)
+    print(weights_df)
+    # Rename 'Sim Spy Prices' to 'SPY'
+    prices_df = prices_df.rename({"Sim Spy Prices": "SPY"})
+    weights_df = weights_df.rename({"AMMA_combined": "SPY"})
+    weights_df = weights_df.with_columns(pl.col("SPY").cast(pl.Float64))
+    print(prices_df)
+    print(weights_df)
+
+    # Create and run backtester
+    backtester = HawkBacktester(initial_value=1)
+    results = backtester.run(prices_df, weights_df)
+    print(results)
+
+    results_df = results["backtest_results"]
+    metrics_df = results["backtest_metrics"]
+
+    # Save results to CSV
+    results_df.write_csv("spy_backtest_results.csv")
+
+
+def old_main():
     # Load and prepare HFF data
     hff_prices_df = pl.read_csv("data/hff.csv")
     hff_prices_df = hff_prices_df.pivot(
@@ -101,4 +197,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    test_input()
