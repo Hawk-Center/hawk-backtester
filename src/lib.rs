@@ -87,12 +87,13 @@ impl HawkBacktester {
         };
 
         // Run the backtest and convert the result back to a Polars DataFrame
-        let (results_df, metrics) = backtester.run().map_err(|e| {
+        let (results_df, positions_df, weights_df, metrics) = backtester.run().map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Error running backtest: {}",
                 e
             ))
         })?;
+
         let simulation_time = simulation_start.elapsed();
         let total_time = start_time.elapsed();
 
@@ -155,6 +156,8 @@ impl HawkBacktester {
         // Return the results DataFrame and metrics DataFrame together in a dictionary
         let return_dict = PyDict::new(py);
         return_dict.set_item("backtest_results", PyDataFrame(results_df))?;
+        return_dict.set_item("backtest_positions", PyDataFrame(positions_df))?;
+        return_dict.set_item("backtest_weights", PyDataFrame(weights_df))?;
         return_dict.set_item("backtest_metrics", PyDataFrame(metrics_df))?;
 
         // print the return_dict to check the output

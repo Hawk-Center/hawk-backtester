@@ -132,7 +132,7 @@ fn test_input_handler_weight_date_alignment() {
         start_date: price_data[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest failed");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
 
     // Verify we get results for all dates, not just the weight event date
     assert_eq!(df.height(), 3);
@@ -163,7 +163,7 @@ fn test_backtester_start_date_behavior() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
     // Currently, the backtester processes all dates
     // This test reveals we might want to add start_date parameter
@@ -193,7 +193,7 @@ fn test_backtester_date_gaps() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
     // Verify we only get entries for days with price data
     assert_eq!(df.height(), 3);
@@ -235,7 +235,7 @@ fn test_backtester_future_weights() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
     // Verify we only process up to last price data point
     assert_eq!(df.height(), 3);

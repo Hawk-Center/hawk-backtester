@@ -52,6 +52,9 @@ impl BacktestMetrics {
             0.0
         };
 
+        // ABS DOLLAR VOLUME PER YEAR / 2xBOOK
+        // Holding Period = 1/turnover
+
         // Sortino Ratio (using only negative returns for denominator)
         let negative_returns: Vec<f64> = daily_returns
             .iter()

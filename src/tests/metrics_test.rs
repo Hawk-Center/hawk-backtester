@@ -50,7 +50,7 @@ fn test_drawdown_calculation() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
     let drawdown_series = df.column("drawdown").unwrap();
 

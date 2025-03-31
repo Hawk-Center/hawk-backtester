@@ -74,19 +74,20 @@ pub struct Backtester<'a> {
 }
 
 impl<'a> Backtester<'a> {
-    /// Runs the backtest simulation and returns the results as a Polars DataFrame and metrics.
+    /// Runs the backtest simulation and returns the results as three Polars DataFrames and metrics.
     ///
     /// Returns:
-    ///  - DataFrame containing:
-    ///     - "date": the simulation's timestamp as a string (ISO 8601 format)
-    ///     - "portfolio_value": the total portfolio value at the timestamp
-    ///     - "daily_return": the daily return (in decimal form)
-    ///     - "daily_log_return": the daily log return (in decimal form)
-    ///     - "cumulative_return": the compounded return from the start
-    ///     - "cumulative_log_return": the cumulative log return from the start
-    ///     - "drawdown": the percentage decline from the peak portfolio value
+    ///  - Main DataFrame containing performance metrics
+    ///  - Position allocation DataFrame containing:
+    ///     - "date": the simulation's timestamp
+    ///     - One column per asset showing dollar value allocation
+    ///     - "cash": cash allocation
+    ///  - Position weights DataFrame containing:
+    ///     - "date": the simulation's timestamp
+    ///     - One column per asset showing percentage weight
+    ///     - "cash": cash weight
     ///  - BacktestMetrics containing various performance metrics
-    pub fn run(&self) -> Result<(DataFrame, BacktestMetrics), PolarsError> {
+    pub fn run(&self) -> Result<(DataFrame, DataFrame, DataFrame, BacktestMetrics), PolarsError> {
         let mut timestamps = Vec::new();
         let mut portfolio_values = Vec::new();
         let mut daily_returns = Vec::new();
@@ -94,6 +95,24 @@ impl<'a> Backtester<'a> {
         let mut cumulative_returns = Vec::new();
         let mut cumulative_log_returns = Vec::new();
         let mut drawdowns = Vec::new();
+
+        // Track position values and weights over time
+        let mut position_values: HashMap<Arc<str>, Vec<f64>> = HashMap::new();
+        let mut position_weights: HashMap<Arc<str>, Vec<f64>> = HashMap::new();
+        let mut cash_values = Vec::new();
+        let mut cash_weights = Vec::new();
+
+        // Initialize tracking for all assets that appear in weight events
+        for event in self.weight_events {
+            for asset in event.weights.keys() {
+                position_values
+                    .entry(asset.clone())
+                    .or_insert_with(Vec::new);
+                position_weights
+                    .entry(asset.clone())
+                    .or_insert_with(Vec::new);
+            }
+        }
 
         let mut portfolio = PortfolioState {
             cash: self.initial_value,
@@ -147,6 +166,41 @@ impl<'a> Backtester<'a> {
             // Compute current portfolio value.
             let current_value = portfolio.total_value();
 
+            // Record position values and weights
+            for (asset, values) in &mut position_values {
+                let position_value = portfolio
+                    .positions
+                    .get(asset)
+                    .map(|pos| pos.allocated)
+                    .unwrap_or(0.0);
+                values.push(position_value);
+            }
+
+            // Record cash value and weight
+            cash_values.push(portfolio.cash);
+
+            // Calculate and record position weights
+            for (asset, weights) in &mut position_weights {
+                let weight = if current_value > 0.0 {
+                    portfolio
+                        .positions
+                        .get(asset)
+                        .map(|pos| pos.allocated / current_value)
+                        .unwrap_or(0.0)
+                } else {
+                    0.0
+                };
+                weights.push(weight);
+            }
+
+            // Record cash weight
+            let cash_weight = if current_value > 0.0 {
+                portfolio.cash / current_value
+            } else {
+                1.0
+            };
+            cash_weights.push(cash_weight);
+
             // Update peak value if we have a new high
             peak_value = peak_value.max(current_value);
 
@@ -197,17 +251,18 @@ impl<'a> Backtester<'a> {
         let metrics =
             BacktestMetrics::calculate(&daily_returns, &drawdowns, self.prices.len(), num_trades);
 
-        let date_series = Series::new("date".into(), timestamps);
+        // Create the main performance DataFrame
+        let date_series = Series::new("date".into(), &timestamps);
         let portfolio_value_series = Series::new("portfolio_value".into(), portfolio_values);
-        let daily_return_series = Series::new("daily_return".into(), daily_returns.clone());
+        let daily_return_series = Series::new("daily_return".into(), &daily_returns);
         let daily_log_return_series = Series::new("daily_log_return".into(), daily_log_returns);
         let cumulative_return_series = Series::new("cumulative_return".into(), cumulative_returns);
         let cumulative_log_return_series =
             Series::new("cumulative_log_return".into(), cumulative_log_returns);
-        let drawdown_series = Series::new("drawdown".into(), drawdowns.clone());
+        let drawdown_series = Series::new("drawdown".into(), drawdowns);
 
-        let df = DataFrame::new(vec![
-            date_series.into(),
+        let performance_df = DataFrame::new(vec![
+            date_series.clone().into(),
             portfolio_value_series.into(),
             daily_return_series.into(),
             daily_log_return_series.into(),
@@ -216,6 +271,27 @@ impl<'a> Backtester<'a> {
             drawdown_series.into(),
         ])?;
 
-        Ok((df, metrics))
+        // Create position values DataFrame
+        let mut position_value_series = vec![date_series.clone().into()];
+        for (asset, values) in position_values {
+            position_value_series.push(Series::new((&*asset).into(), values).into());
+        }
+        position_value_series.push(Series::new("cash".into(), cash_values).into());
+        let position_values_df = DataFrame::new(position_value_series)?;
+
+        // Create position weights DataFrame
+        let mut position_weight_series = vec![date_series.into()];
+        for (asset, weights) in position_weights {
+            position_weight_series.push(Series::new((&*asset).into(), weights).into());
+        }
+        position_weight_series.push(Series::new("cash".into(), cash_weights).into());
+        let position_weights_df = DataFrame::new(position_weight_series)?;
+
+        Ok((
+            performance_df,
+            position_values_df,
+            position_weights_df,
+            metrics,
+        ))
     }
 }

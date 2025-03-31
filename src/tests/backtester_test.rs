@@ -75,7 +75,6 @@ fn test_update_positions() {
 
 #[test]
 fn test_backtester_no_weight_event() {
-    // Test backtester behavior when no weight events occur.
     let now = OffsetDateTime::now_utc();
     let prices = vec![
         make_price_data(now, vec![("A", 10.0)]),
@@ -90,40 +89,63 @@ fn test_backtester_no_weight_event() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
-    // Access each series by column name.
+    // Test main results DataFrame
     let pv_series = df.column("portfolio_value").unwrap();
     let daily_series = df.column("daily_return").unwrap();
     let log_series = df.column("daily_log_return").unwrap();
     let cum_series = df.column("cumulative_return").unwrap();
 
     for i in 0..df.height() {
-        // Portfolio value should remain constant at 1000.0
         assert!((pv_series.get(i).unwrap().try_extract::<f64>().unwrap() - 1000.0).abs() < 1e-10);
-        // Daily returns should be 0.0 since price doesn't change
         assert!((daily_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
-        // Log returns should be 0.0 since price doesn't change
         assert!((log_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
-        // Cumulative returns should be 0.0
         assert!((cum_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
+    }
+
+    // Test positions DataFrame
+    let cash_series = positions_df.column("cash").unwrap();
+    let a_series = positions_df.column("A").unwrap();
+    for i in 0..positions_df.height() {
+        assert!((cash_series.get(i).unwrap().try_extract::<f64>().unwrap() - 1000.0).abs() < 1e-10);
+        assert!((a_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
+    }
+
+    // Test weights DataFrame
+    let cash_weight_series = weights_df.column("cash").unwrap();
+    let a_weight_series = weights_df.column("A").unwrap();
+    for i in 0..weights_df.height() {
+        assert!(
+            (cash_weight_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap()
+                - 1.0)
+                .abs()
+                < 1e-10
+        );
+        assert!(
+            (a_weight_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap())
+            .abs()
+                < 1e-10
+        );
     }
 }
 
 #[test]
 fn test_backtester_with_weight_event() {
-    // Simulate a backtest with one weight event.
     let now = OffsetDateTime::now_utc();
-
-    // Day 1 prices.
     let pd1 = make_price_data(now, vec![("A", 10.0), ("B", 20.0)]);
-    // Day 2: Prices change.
     let pd2 = make_price_data(now + Duration::days(1), vec![("A", 11.0), ("B", 19.0)]);
-    // Day 3: Prices change again.
     let pd3 = make_price_data(now + Duration::days(2), vec![("A", 12.0), ("B", 18.0)]);
     let prices = vec![pd1.clone(), pd2, pd3];
 
-    // Weight event on Day 1.
     let we = make_weight_event(now, vec![("A", 0.5), ("B", 0.3)]);
     let weight_events = vec![we];
 
@@ -134,15 +156,15 @@ fn test_backtester_with_weight_event() {
         start_date: pd1.timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest failed");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
 
+    // Test main results
     let pv_series = df.column("portfolio_value").unwrap();
     let daily_series = df.column("daily_return").unwrap();
-    let log_series = df.column("daily_log_return").unwrap();
     let cum_series = df.column("cumulative_return").unwrap();
     let cum_log_series = df.column("cumulative_log_return").unwrap();
 
-    // Day 1: After rebalancing, portfolio should be 1000.0.
+    // Day 1 checks
     let value1: f64 = pv_series.get(0).unwrap().extract().unwrap();
     let cum1: f64 = cum_series.get(0).unwrap().extract().unwrap();
     let cum_log1: f64 = cum_log_series.get(0).unwrap().extract().unwrap();
@@ -150,10 +172,7 @@ fn test_backtester_with_weight_event() {
     assert_eq!(cum1, 0.0);
     assert_eq!(cum_log1, 0.0);
 
-    // Day 2: Expected calculations:
-    // For asset "A": 500 dollars * (11/10) = 550,
-    // For asset "B": 300 dollars * (19/20) = 285,
-    // Cash remains 200. Total = 550 + 285 + 200 = 1035.
+    // Day 2 checks
     let value2: f64 = pv_series.get(1).unwrap().extract().unwrap();
     let daily2: f64 = daily_series.get(1).unwrap().extract().unwrap();
     let cum2: f64 = cum_series.get(1).unwrap().extract().unwrap();
@@ -161,25 +180,40 @@ fn test_backtester_with_weight_event() {
     assert!((value2 - 1035.0).abs() < 1e-10);
     assert!((daily2 - 0.035).abs() < 1e-3);
     assert!((cum2 - 0.035).abs() < 1e-3);
-    // Verify cumulative log return matches ln(1.035)
     assert!((cum_log2 - (1.035_f64).ln()).abs() < 1e-3);
+
+    // Test positions
+    let a_pos = positions_df.column("A").unwrap();
+    let b_pos = positions_df.column("B").unwrap();
+    let cash_pos = positions_df.column("cash").unwrap();
+
+    // Initial positions
+    assert!((a_pos.get(0).unwrap().try_extract::<f64>().unwrap() - 500.0).abs() < 1e-10);
+    assert!((b_pos.get(0).unwrap().try_extract::<f64>().unwrap() - 300.0).abs() < 1e-10);
+    assert!((cash_pos.get(0).unwrap().try_extract::<f64>().unwrap() - 200.0).abs() < 1e-10);
+
+    // Test weights
+    let a_weight = weights_df.column("A").unwrap();
+    let b_weight = weights_df.column("B").unwrap();
+    let cash_weight = weights_df.column("cash").unwrap();
+
+    // Initial weights
+    assert!((a_weight.get(0).unwrap().try_extract::<f64>().unwrap() - 0.5).abs() < 1e-10);
+    assert!((b_weight.get(0).unwrap().try_extract::<f64>().unwrap() - 0.3).abs() < 1e-10);
+    assert!((cash_weight.get(0).unwrap().try_extract::<f64>().unwrap() - 0.2).abs() < 1e-10);
 }
 
 #[test]
 fn test_multiple_weight_events() {
-    // Simulate a backtest with multiple weight events.
     let now = OffsetDateTime::now_utc();
-
-    // Four days of price data.
     let pd1 = make_price_data(now, vec![("A", 10.0)]);
     let pd2 = make_price_data(now + Duration::days(1), vec![("A", 10.0)]);
     let pd3 = make_price_data(now + Duration::days(2), vec![("A", 12.0)]);
     let pd4 = make_price_data(now + Duration::days(3), vec![("A", 11.0)]);
     let prices = vec![pd1.clone(), pd2, pd3, pd4];
 
-    // Two weight events.
-    let we1 = make_weight_event(now, vec![("A", 0.7)]); // Event on Day 1.
-    let we2 = make_weight_event(now + Duration::days(2), vec![("A", 0.5)]); // Event on Day 3.
+    let we1 = make_weight_event(now, vec![("A", 0.7)]);
+    let we2 = make_weight_event(now + Duration::days(2), vec![("A", 0.5)]);
     let weight_events = vec![we1, we2];
 
     let backtester = Backtester {
@@ -189,23 +223,35 @@ fn test_multiple_weight_events() {
         start_date: pd1.timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest failed");
-    let pv_series = df.column("portfolio_value").unwrap();
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
 
-    // Final day (Day 4) portfolio value is expected to be ~1092.5.
+    // Test final portfolio value
+    let pv_series = df.column("portfolio_value").unwrap();
     let value4: f64 = pv_series.get(3).unwrap().extract().unwrap();
     assert!((value4 - 1092.5).abs() < 1e-1);
+
+    // Test position changes after second weight event
+    let a_pos = positions_df.column("A").unwrap();
+    let cash_pos = positions_df.column("cash").unwrap();
+
+    // After second weight event (day 3)
+    let day3_pos = a_pos.get(2).unwrap().try_extract::<f64>().unwrap();
+    let day3_cash = cash_pos.get(2).unwrap().try_extract::<f64>().unwrap();
+    assert!((day3_pos / (day3_pos + day3_cash) - 0.5).abs() < 1e-10);
+
+    // Test weight changes
+    let a_weight = weights_df.column("A").unwrap();
+    assert!((a_weight.get(0).unwrap().try_extract::<f64>().unwrap() - 0.7).abs() < 1e-10);
+    assert!((a_weight.get(2).unwrap().try_extract::<f64>().unwrap() - 0.5).abs() < 1e-10);
 }
 
 #[test]
 fn test_dataframe_output() {
-    // Verify that the DataFrame output has the expected structure.
     let now = OffsetDateTime::now_utc();
     let prices = vec![
         make_price_data(now, vec![("A", 100.0)]),
         make_price_data(now + Duration::days(1), vec![("A", 101.0)]),
     ];
-    // Use an empty weight events vector.
     let weight_events = Vec::new();
     let backtester = Backtester {
         prices: &prices,
@@ -214,8 +260,9 @@ fn test_dataframe_output() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest failed");
-    let cols = df.get_column_names();
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
+
+    // Check main results DataFrame
     let expected_cols = vec![
         "date",
         "portfolio_value",
@@ -225,9 +272,26 @@ fn test_dataframe_output() {
         "cumulative_log_return",
         "drawdown",
     ];
-    assert_eq!(cols, expected_cols);
-    // Check that the number of rows equals the number of price data entries.
+    assert_eq!(df.get_column_names(), expected_cols);
     assert_eq!(df.height(), prices.len());
+
+    // Check positions DataFrame
+    assert!(positions_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("cash")));
+    assert!(positions_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("A")));
+    assert_eq!(positions_df.height(), prices.len());
+
+    // Check weights DataFrame
+    assert!(weights_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("cash")));
+    assert!(weights_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("A")));
+    assert_eq!(weights_df.height(), prices.len());
 }
 
 #[test]
@@ -291,28 +355,49 @@ fn test_backtester_with_zero_initial_value() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
-    // All values should be zero
+    // Check main results are zero
     let pv_series = df.column("portfolio_value").unwrap();
     let daily_series = df.column("daily_return").unwrap();
     let cum_series = df.column("cumulative_return").unwrap();
 
     for i in 0..df.height() {
-        let value: f64 = pv_series.get(i).unwrap().extract().unwrap();
-        let daily: f64 = daily_series.get(i).unwrap().extract().unwrap();
-        let cum: f64 = cum_series.get(i).unwrap().extract().unwrap();
-        assert_eq!(value, 0.0);
-        assert_eq!(daily, 0.0);
-        assert_eq!(cum, 0.0);
+        assert_eq!(pv_series.get(i).unwrap().try_extract::<f64>().unwrap(), 0.0);
+        assert_eq!(
+            daily_series.get(i).unwrap().try_extract::<f64>().unwrap(),
+            0.0
+        );
+        assert_eq!(
+            cum_series.get(i).unwrap().try_extract::<f64>().unwrap(),
+            0.0
+        );
+    }
+
+    // Check positions are zero
+    let a_pos = positions_df.column("A").unwrap();
+    let cash_pos = positions_df.column("cash").unwrap();
+    for i in 0..positions_df.height() {
+        assert_eq!(a_pos.get(i).unwrap().try_extract::<f64>().unwrap(), 0.0);
+        assert_eq!(cash_pos.get(i).unwrap().try_extract::<f64>().unwrap(), 0.0);
+    }
+
+    // Check weights
+    let a_weight = weights_df.column("A").unwrap();
+    let cash_weight = weights_df.column("cash").unwrap();
+    for i in 0..weights_df.height() {
+        // With zero initial value, cash weight should be 1.0 and asset weights 0.0
+        assert_eq!(a_weight.get(i).unwrap().try_extract::<f64>().unwrap(), 0.0);
+        assert_eq!(
+            cash_weight.get(i).unwrap().try_extract::<f64>().unwrap(),
+            1.0
+        );
     }
 }
 
 #[test]
 fn test_backtester_with_missing_prices() {
     let now = OffsetDateTime::now_utc();
-
-    // Create price data with missing prices for some assets
     let pd1 = make_price_data(now, vec![("A", 10.0), ("B", 20.0)]);
     let pd2 = make_price_data(now + Duration::days(1), vec![("A", 11.0)]); // B missing
     let pd3 = make_price_data(now + Duration::days(2), vec![("B", 22.0)]); // A missing
@@ -327,21 +412,33 @@ fn test_backtester_with_missing_prices() {
         start_date: pd1.timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
     assert_eq!(df.height(), 3);
+    assert_eq!(positions_df.height(), 3);
+    assert_eq!(weights_df.height(), 3);
+
+    // Verify both assets are tracked
+    assert!(positions_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("A")));
+    assert!(positions_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("B")));
+    assert!(weights_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("A")));
+    assert!(weights_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("B")));
 }
 
 #[test]
 fn test_weight_event_with_invalid_asset() {
     let now = OffsetDateTime::now_utc();
-
-    // Price data only includes asset A
     let prices = vec![
         make_price_data(now, vec![("A", 10.0)]),
         make_price_data(now + Duration::days(1), vec![("A", 11.0)]),
     ];
-
-    // Weight event includes non-existent asset B
     let weight_events = vec![make_weight_event(now, vec![("A", 0.5), ("B", 0.3)])];
 
     let backtester = Backtester {
@@ -351,12 +448,21 @@ fn test_weight_event_with_invalid_asset() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
-    // Check that portfolio value reflects only valid allocations
-    let pv_series = df.column("portfolio_value").unwrap();
-    let initial_value: f64 = pv_series.get(0).unwrap().extract().unwrap();
-    assert!((initial_value - 1000.0).abs() < 1e-10);
+    // Check that both assets are tracked even though B has no prices
+    assert!(positions_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("A")));
+    assert!(positions_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("B")));
+    assert!(weights_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("A")));
+    assert!(weights_df
+        .get_column_names()
+        .contains(&&PlSmallStr::from("B")));
 }
 
 /// WE ARE NOT SUPPORTING MULTIPLE WEIGHT EVENTS ON THE SAME DAY -- ONLY PASS ONE WEIGHT EVENT PER DAY
@@ -414,7 +520,7 @@ fn test_weight_allocation_bounds() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
     // Even with weight > 1, the portfolio should still function
     let pv_series = df.column("portfolio_value").unwrap();
@@ -443,7 +549,7 @@ fn test_short_position_returns() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
     // Get the portfolio values
     let pv_series = df.column("portfolio_value").unwrap();
@@ -530,7 +636,7 @@ fn test_mixed_long_short_portfolio() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
     // Get the portfolio value and returns
     let pv_series = df.column("portfolio_value").unwrap();
@@ -561,7 +667,6 @@ fn test_backtester_respects_start_date() {
     let now = OffsetDateTime::now_utc();
     let start = now - Duration::days(3); // Start date 3 days ago
 
-    // Create price data starting before our start date
     let prices = vec![
         make_price_data(start - Duration::days(2), vec![("A", 10.0)]), // Should be skipped
         make_price_data(start - Duration::days(1), vec![("A", 11.0)]), // Should be skipped
@@ -582,13 +687,31 @@ fn test_backtester_respects_start_date() {
         start_date: start.date(),
     };
 
-    let (df, _) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
-    // Verify we only get data from the start date onwards
+    // Verify we only get data from the start date onwards for all DataFrames
     assert_eq!(df.height(), 3); // Only dates >= start_date
+    assert_eq!(positions_df.height(), 3);
+    assert_eq!(weights_df.height(), 3);
 
-    // Get the dates column to verify first date
-    let dates = df.column("date").unwrap();
-    let first_date = dates.str().unwrap().get(0).unwrap();
-    assert_eq!(first_date, format!("{}", start.date()));
+    // Verify first date in all DataFrames
+    let expected_date = format!("{}", start.date());
+    let results_dates = df.column("date").unwrap();
+    let positions_dates = positions_df.column("date").unwrap();
+    let weights_dates = weights_df.column("date").unwrap();
+
+    assert_eq!(results_dates.str().unwrap().get(0).unwrap(), expected_date);
+    assert_eq!(
+        positions_dates.str().unwrap().get(0).unwrap(),
+        expected_date
+    );
+    assert_eq!(weights_dates.str().unwrap().get(0).unwrap(), expected_date);
+
+    // Verify initial weight is applied
+    let a_weight = weights_df.column("A").unwrap();
+    let initial_weight: f64 = a_weight.get(0).unwrap().try_extract::<f64>().unwrap();
+    assert!(
+        (initial_weight - 0.8).abs() < 1e-10,
+        "Expected 0.8 weight at start date"
+    );
 }
