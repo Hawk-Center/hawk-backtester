@@ -40,23 +40,34 @@ impl BacktestMetrics {
         let trading_days_per_year = 252.0;
         let years = num_days as f64 / trading_days_per_year;
         let annualized_return = (1.0 + total_return).powf(1.0 / years) - 1.0;
+        let risk_free_rate = 0.00; // Define risk-free rate here
 
         // Calculate volatility
-        let avg_daily_return = daily_returns.iter().sum::<f64>() / daily_returns.len() as f64;
-        let variance: f64 = daily_returns
-            .iter()
-            .map(|&r| (r - avg_daily_return).powi(2))
-            .sum::<f64>()
-            / (daily_returns.len() - 1) as f64;
-        let daily_volatility = variance.sqrt();
-        let annualized_volatility = daily_volatility * (trading_days_per_year as f64).sqrt();
-
-        // Sharpe Ratio (assuming risk-free rate of 0.00)
-        let risk_free_rate = 0.00;
-        let sharpe_ratio = if annualized_volatility != 0.0 {
-            (annualized_return - risk_free_rate) / annualized_volatility
+        let avg_daily_return = if !daily_returns.is_empty() {
+            daily_returns.iter().sum::<f64>() / daily_returns.len() as f64
         } else {
             0.0
+        };
+        // Calculate annualized volatility and Sharpe ratio, handle case where there is limited data
+        let (annualized_volatility, sharpe_ratio) = if daily_returns.len() >= 2 {
+            let variance: f64 = daily_returns
+                .iter()
+                .map(|&r| (r - avg_daily_return).powi(2))
+                .sum::<f64>()
+                / (daily_returns.len() - 1) as f64;
+            let daily_volatility = variance.sqrt();
+            let annualized_volatility = daily_volatility * (trading_days_per_year as f64).sqrt();
+
+            // Sharpe Ratio (using risk_free_rate defined above)
+            let sharpe_ratio = if annualized_volatility != 0.0 {
+                (annualized_return - risk_free_rate) / annualized_volatility
+            } else {
+                0.0
+            };
+            (annualized_volatility, sharpe_ratio)
+        } else {
+            // Not enough data for volatility or Sharpe ratio
+            (0.0, 0.0)
         };
 
         // Calculate average portfolio value (BOOK)

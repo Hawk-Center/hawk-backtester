@@ -271,6 +271,7 @@ fn test_dataframe_output() {
         "cumulative_return",
         "cumulative_log_return",
         "drawdown",
+        "volume_traded",
     ];
     assert_eq!(df.get_column_names(), expected_cols);
     assert_eq!(df.height(), prices.len());
