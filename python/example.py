@@ -125,14 +125,17 @@ def test_input():
     backtester = HawkBacktester(initial_value=1_000_000.0)
     results = backtester.run(prices_df, weights_df)
     print(results)
+    # get portfolio turnover from results
+    portfolio_turnover = results["backtest_metrics"]["portfolio_turnover"]
+    print(f"Portfolio Turnover: {portfolio_turnover}")
 
     # # Save results to CSV files
-    # results_df = results["backtest_results"]
-    # metrics_df = results["backtest_metrics"]
+    results_df = results["backtest_results"]
+    metrics_df = results["backtest_metrics"]
 
     # # # Save backtest results and metrics to CSV
-    # # results_df.write_csv("backtest_results.csv")
-    # # metrics_df.write_csv("backtest_metrics.csv")
+    results_df.write_csv("backtest_results.csv")
+    metrics_df.write_csv("backtest_metrics.csv")
 
     print(f"Results saved to backtest_results.csv and backtest_metrics.csv")
 
@@ -166,5 +169,7 @@ def main():
 
 
 if __name__ == "__main__":
-    # test_input()
-    main()
+
+    # Print the version of the Hawk Backtester
+    test_input()
+    # main()

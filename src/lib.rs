@@ -110,6 +110,9 @@ impl HawkBacktester {
         metrics_dict.set_item("avg_daily_return", metrics.avg_daily_return)?;
         metrics_dict.set_item("win_rate", metrics.win_rate)?;
         metrics_dict.set_item("num_trades", metrics.num_trades)?;
+        metrics_dict.set_item("cumulative_volume_traded", metrics.cumulative_volume_traded)?;
+        metrics_dict.set_item("portfolio_turnover", metrics.portfolio_turnover)?;
+        metrics_dict.set_item("holding_period_years", metrics.holding_period_years)?;
 
         // Simulation statistics
         metrics_dict.set_item("num_price_points", prices.len())?;

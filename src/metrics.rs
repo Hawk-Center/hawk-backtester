@@ -13,6 +13,10 @@ pub struct BacktestMetrics {
     pub avg_daily_return: f64,
     pub win_rate: f64,
     pub num_trades: usize,
+    pub volume_traded: Vec<f64>,       // Volume traded at each rebalance
+    pub cumulative_volume_traded: f64, // Total volume traded across all rebalances
+    pub portfolio_turnover: f64,       // Annual turnover rate (ABS DOLLAR VOLUME PER YEAR / 2xBOOK)
+    pub holding_period_years: f64,     // Average holding period in years (1/turnover)
 }
 
 impl BacktestMetrics {
@@ -22,6 +26,9 @@ impl BacktestMetrics {
         drawdowns: &[f64],
         num_days: usize,
         num_trades: usize,
+        volume_traded: Vec<f64>,
+        cumulative_volume_traded: f64,
+        portfolio_values: &[f64], // Need portfolio values to calculate average portfolio size
     ) -> Self {
         // Calculate total return (arithmetic return)
         let total_return = daily_returns.iter().fold(1.0, |acc, &r| acc * (1.0 + r)) - 1.0;
@@ -52,8 +59,33 @@ impl BacktestMetrics {
             0.0
         };
 
-        // ABS DOLLAR VOLUME PER YEAR / 2xBOOK
-        // Holding Period = 1/turnover
+        // Calculate average portfolio value (BOOK)
+        let avg_portfolio_value = if !portfolio_values.is_empty() {
+            portfolio_values.iter().sum::<f64>() / portfolio_values.len() as f64
+        } else {
+            1.0 // Fallback to avoid division by zero
+        };
+
+        // Calculate annualized turnover rate
+        // Turnover = (ABS DOLLAR VOLUME PER YEAR) / (2 × BOOK)
+        let annualized_volume = if years > 0.0 {
+            cumulative_volume_traded / years // Annualize the volume
+        } else {
+            0.0
+        };
+
+        let portfolio_turnover = if avg_portfolio_value > 0.0 {
+            annualized_volume / (2.0 * avg_portfolio_value)
+        } else {
+            0.0
+        };
+
+        // Calculate average holding period in years
+        let holding_period_years = if portfolio_turnover > 0.0 {
+            1.0 / portfolio_turnover
+        } else {
+            f64::INFINITY // If no turnover, holding period is infinite
+        };
 
         // Sortino Ratio (using only negative returns for denominator)
         let negative_returns: Vec<f64> = daily_returns
@@ -93,6 +125,10 @@ impl BacktestMetrics {
             avg_daily_return,
             win_rate,
             num_trades,
+            volume_traded,
+            cumulative_volume_traded,
+            portfolio_turnover,
+            holding_period_years,
         }
     }
 }

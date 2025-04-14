@@ -715,3 +715,69 @@ fn test_backtester_respects_start_date() {
         "Expected 0.8 weight at start date"
     );
 }
+
+#[test]
+fn test_volume_traded() {
+    let now = OffsetDateTime::now_utc();
+
+    // Create price data
+    let prices = vec![
+        make_price_data(now, vec![("A", 10.0), ("B", 20.0)]),
+        make_price_data(now + Duration::days(1), vec![("A", 11.0), ("B", 21.0)]),
+        make_price_data(now + Duration::days(2), vec![("A", 12.0), ("B", 22.0)]),
+    ];
+
+    // Create two weight events with different allocations
+    let weight_events = vec![
+        make_weight_event(now, vec![("A", 0.5), ("B", 0.3)]), // Initial allocation
+        make_weight_event(now + Duration::days(2), vec![("A", 0.3), ("B", 0.5)]), // Rebalance
+    ];
+
+    let backtester = Backtester {
+        prices: &prices,
+        weight_events: &weight_events,
+        initial_value: 1000.0,
+        start_date: prices[0].timestamp,
+    };
+
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+
+    // Get volume traded series
+    let volume_series = df.column("volume_traded").unwrap();
+
+    // First day should have initial allocation volume
+    let day1_volume: f64 = volume_series.get(0).unwrap().try_extract().unwrap();
+    assert!(
+        day1_volume > 0.0,
+        "Expected non-zero volume for initial allocation"
+    );
+    assert!(
+        (day1_volume - 800.0).abs() < 1e-10,
+        "Expected volume of 800 (0.5 + 0.3 = 0.8 of 1000)"
+    );
+
+    // Second day should have zero volume (no rebalancing)
+    let day2_volume: f64 = volume_series.get(1).unwrap().try_extract().unwrap();
+    assert_eq!(
+        day2_volume, 0.0,
+        "Expected zero volume on non-rebalancing day"
+    );
+
+    // Third day should have rebalancing volume
+    let day3_volume: f64 = volume_series.get(2).unwrap().try_extract().unwrap();
+    assert!(
+        day3_volume > 0.0,
+        "Expected non-zero volume for rebalancing"
+    );
+
+    // Check cumulative volume traded
+    assert!(
+        metrics.cumulative_volume_traded > 0.0,
+        "Expected non-zero cumulative volume"
+    );
+    assert_eq!(
+        metrics.cumulative_volume_traded,
+        metrics.volume_traded.iter().sum::<f64>(),
+        "Cumulative volume should equal sum of daily volumes"
+    );
+}

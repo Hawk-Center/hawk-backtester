@@ -95,6 +95,8 @@ impl<'a> Backtester<'a> {
         let mut cumulative_returns = Vec::new();
         let mut cumulative_log_returns = Vec::new();
         let mut drawdowns = Vec::new();
+        let mut volume_traded = Vec::new();
+        let mut cumulative_volume_traded = 0.0;
 
         // Track position values and weights over time
         let mut position_values: HashMap<Arc<str>, Vec<f64>> = HashMap::new();
@@ -134,12 +136,33 @@ impl<'a> Backtester<'a> {
             // Update existing positions with today's prices.
             portfolio.update_positions(&price_data.prices);
 
+            let mut trade_volume = 0.0; // Initialize trade volume for this day
+
             // If a new weight event is due, rebalance using the current prices.
             if weight_index < n_events
                 && price_data.timestamp >= self.weight_events[weight_index].timestamp
             {
                 let event = &self.weight_events[weight_index];
                 let current_total = portfolio.total_value();
+
+                // Calculate volume traded as sum of absolute changes in positions
+
+                // Add volume from closing existing positions
+                for (asset, pos) in &portfolio.positions {
+                    let new_weight = event.weights.get(asset).copied().unwrap_or(0.0);
+                    let new_allocation = new_weight * current_total;
+                    trade_volume += (new_allocation - pos.allocated).abs();
+                }
+
+                // Add volume from opening new positions
+                for (asset, &weight) in &event.weights {
+                    if !portfolio.positions.contains_key(asset) {
+                        trade_volume += (weight * current_total).abs();
+                    }
+                }
+
+                cumulative_volume_traded += trade_volume;
+
                 portfolio.positions.clear();
                 let mut allocated_sum = 0.0;
 
@@ -162,6 +185,9 @@ impl<'a> Backtester<'a> {
                 weight_index += 1;
                 num_trades += 1;
             }
+
+            // Record trade volume for this day (will be 0 if no rebalancing occurred)
+            volume_traded.push(trade_volume);
 
             // Compute current portfolio value.
             let current_value = portfolio.total_value();
@@ -248,8 +274,15 @@ impl<'a> Backtester<'a> {
         }
 
         // Calculate metrics
-        let metrics =
-            BacktestMetrics::calculate(&daily_returns, &drawdowns, self.prices.len(), num_trades);
+        let metrics = BacktestMetrics::calculate(
+            &daily_returns,
+            &drawdowns,
+            self.prices.len(),
+            num_trades,
+            volume_traded.clone(),
+            cumulative_volume_traded,
+            &portfolio_values,
+        );
 
         // Create the main performance DataFrame
         let date_series = Series::new("date".into(), &timestamps);
@@ -260,6 +293,7 @@ impl<'a> Backtester<'a> {
         let cumulative_log_return_series =
             Series::new("cumulative_log_return".into(), cumulative_log_returns);
         let drawdown_series = Series::new("drawdown".into(), drawdowns);
+        let volume_traded_series = Series::new("volume_traded".into(), volume_traded);
 
         let performance_df = DataFrame::new(vec![
             date_series.clone().into(),
@@ -269,6 +303,7 @@ impl<'a> Backtester<'a> {
             cumulative_return_series.into(),
             cumulative_log_return_series.into(),
             drawdown_series.into(),
+            volume_traded_series.into(),
         ])?;
 
         // Create position values DataFrame
