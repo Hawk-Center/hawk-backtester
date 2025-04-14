@@ -126,7 +126,11 @@ def test_input():
     results = backtester.run(prices_df, weights_df)
     print(results)
     # get portfolio turnover from results
-    portfolio_turnover = results["backtest_metrics"]["portfolio_turnover"]
+    # Filter the metrics DataFrame to find the portfolio_turnover value
+    metrics_df = results["backtest_metrics"]
+    portfolio_turnover = metrics_df.filter(pl.col("metric") == "portfolio_turnover")[
+        "value"
+    ][0]
     print(f"Portfolio Turnover: {portfolio_turnover}")
 
     # # Save results to CSV files

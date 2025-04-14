@@ -3,7 +3,6 @@ use polars::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use time::Date;
-use time::{Duration, OffsetDateTime};
 
 /// Represents a snapshot of market prices for various assets at a given timestamp.
 #[derive(Debug, Clone)]

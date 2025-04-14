@@ -2,8 +2,6 @@ use polars::prelude::*;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_polars::PyDataFrame;
-use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Instant;
 use time::Date;
 
@@ -13,7 +11,6 @@ pub mod metrics;
 
 use backtester::Backtester;
 use input_handler::{parse_price_df, parse_weights_df};
-use metrics::BacktestMetrics;
 
 /// Python wrapper for the Rust Backtester
 #[pyclass]
