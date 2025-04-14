@@ -125,6 +125,13 @@ impl<'a> Backtester<'a> {
         let n_events = self.weight_events.len();
         let mut num_trades = 0;
 
+        // Advance weight_index past any events that occur before the start_date
+        while weight_index < n_events
+            && self.weight_events[weight_index].timestamp < self.start_date
+        {
+            weight_index += 1;
+        }
+
         // Iterate through all price data points in chronological order.
         for price_data in self.prices {
             // Skip data points before the start date
@@ -137,7 +144,7 @@ impl<'a> Backtester<'a> {
 
             let mut trade_volume = 0.0; // Initialize trade volume for this day
 
-            // If a new weight event is due, rebalance using the current prices.
+            // If a new weight event is due (check is now simpler as we pre-advanced weight_index)
             if weight_index < n_events
                 && price_data.timestamp >= self.weight_events[weight_index].timestamp
             {

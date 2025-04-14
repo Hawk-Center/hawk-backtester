@@ -106,15 +106,20 @@ fn test_backtester_no_weight_event() {
 
     // Test positions DataFrame
     let cash_series = positions_df.column("cash").unwrap();
-    let a_series = positions_df.column("A").unwrap();
+    // Asset "A" column should not exist as it was not in weight_events
+    assert!(positions_df.column("A").is_err());
+    // assert!(positions_df.column("A").is_ok() == false); // Alternative check
     for i in 0..positions_df.height() {
         assert!((cash_series.get(i).unwrap().try_extract::<f64>().unwrap() - 1000.0).abs() < 1e-10);
-        assert!((a_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
+        // No need to check a_series as it shouldn't exist
+        // assert!((a_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
     }
 
     // Test weights DataFrame
     let cash_weight_series = weights_df.column("cash").unwrap();
-    let a_weight_series = weights_df.column("A").unwrap();
+    // Asset "A" column should not exist
+    assert!(weights_df.column("A").is_err());
+    // assert!(weights_df.column("A").is_ok() == false); // Alternative check
     for i in 0..weights_df.height() {
         assert!(
             (cash_weight_series
@@ -126,15 +131,16 @@ fn test_backtester_no_weight_event() {
                 .abs()
                 < 1e-10
         );
-        assert!(
-            (a_weight_series
-                .get(i)
-                .unwrap()
-                .try_extract::<f64>()
-                .unwrap())
-            .abs()
-                < 1e-10
-        );
+        // No need to check a_weight_series as it shouldn't exist
+        // assert!(
+        //     (a_weight_series
+        //         .get(i)
+        //         .unwrap()
+        //         .try_extract::<f64>()
+        //         .unwrap())
+        //     .abs()
+        //         < 1e-10
+        // );
     }
 }
 
@@ -252,7 +258,8 @@ fn test_dataframe_output() {
         make_price_data(now, vec![("A", 100.0)]),
         make_price_data(now + Duration::days(1), vec![("A", 101.0)]),
     ];
-    let weight_events = Vec::new();
+    // Add a weight event that includes asset "A" so it appears in the output
+    let weight_events = vec![make_weight_event(now, vec![("A", 0.8)])];
     let backtester = Backtester {
         prices: &prices,
         weight_events: &weight_events,
@@ -260,7 +267,7 @@ fn test_dataframe_output() {
         start_date: prices[0].timestamp,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
 
     // Check main results DataFrame
     let expected_cols = vec![
@@ -276,22 +283,24 @@ fn test_dataframe_output() {
     assert_eq!(df.get_column_names(), expected_cols);
     assert_eq!(df.height(), prices.len());
 
-    // Check positions DataFrame
+    // Check positions DataFrame - only cash and "A" (from weight_events) should exist
     assert!(positions_df
         .get_column_names()
         .contains(&&PlSmallStr::from("cash")));
     assert!(positions_df
         .get_column_names()
         .contains(&&PlSmallStr::from("A")));
+    assert_eq!(positions_df.width(), 3); // date, cash, A
     assert_eq!(positions_df.height(), prices.len());
 
-    // Check weights DataFrame
+    // Check weights DataFrame - only cash and "A" (from weight_events) should exist
     assert!(weights_df
         .get_column_names()
         .contains(&&PlSmallStr::from("cash")));
     assert!(weights_df
         .get_column_names()
         .contains(&&PlSmallStr::from("A")));
+    assert_eq!(weights_df.width(), 3); // date, cash, A
     assert_eq!(weights_df.height(), prices.len());
 }
 
