@@ -62,6 +62,8 @@ results = backtester.run(prices_df, weights_df)
 # Parse the result dictionary
 results_df = results["backtest_results"]
 metrics_df = results["backtest_metrics"]
+cash_positions_df = results["backtest_positions"]
+position_weights_df = results["backtest_weights"]
 ```
 
 ## Input Data Format
@@ -104,5 +106,5 @@ maturin publish --username __token__ --password $PYPI_API_TOKEN
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the Apache 2.0 License - see the LICENSE file for details.
 
