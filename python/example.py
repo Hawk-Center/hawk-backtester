@@ -122,7 +122,7 @@ def test_input():
     weights_df = weights_df.drop_nulls()
     print(weights_df)
 
-    backtester = HawkBacktester(initial_value=1_000_000.0)
+    backtester = HawkBacktester(initial_value=1_000_000.0, trading_fee_bps=0)
     results = backtester.run(prices_df, weights_df)
     print(results)
     # get portfolio turnover from results

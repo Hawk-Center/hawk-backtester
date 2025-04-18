@@ -101,23 +101,43 @@ impl HawkBacktester {
         // Create Python dictionary for metrics and statistics
         let metrics_dict = PyDict::new(py);
         // Performance metrics
-        metrics_dict.set_item("total_return", metrics.total_return)?;
-        metrics_dict.set_item("annualized_return", metrics.annualized_return)?;
-        metrics_dict.set_item("annualized_volatility", metrics.annualized_volatility)?;
-        metrics_dict.set_item("sharpe_ratio", metrics.sharpe_ratio)?;
-        metrics_dict.set_item("sortino_ratio", metrics.sortino_ratio)?;
-        metrics_dict.set_item("max_drawdown", metrics.max_drawdown)?;
-        metrics_dict.set_item("avg_drawdown", metrics.avg_drawdown)?;
-        metrics_dict.set_item("avg_daily_return", metrics.avg_daily_return)?;
-        metrics_dict.set_item("win_rate", metrics.win_rate)?;
-        metrics_dict.set_item("num_trades", metrics.num_trades)?;
+        // Net
+        metrics_dict.set_item("net_total_return", metrics.net_total_return)?;
+        metrics_dict.set_item("net_annualized_return", metrics.net_annualized_return)?;
+        metrics_dict.set_item(
+            "net_annualized_volatility",
+            metrics.net_annualized_volatility,
+        )?;
+        metrics_dict.set_item("net_sharpe_ratio", metrics.net_sharpe_ratio)?;
+        metrics_dict.set_item("net_sortino_ratio", metrics.net_sortino_ratio)?;
+        metrics_dict.set_item("net_max_drawdown", metrics.net_max_drawdown)?;
+        metrics_dict.set_item("net_avg_drawdown", metrics.net_avg_drawdown)?;
+        metrics_dict.set_item("net_avg_daily_return", metrics.net_avg_daily_return)?;
+        metrics_dict.set_item("net_win_rate", metrics.net_win_rate)?;
+        metrics_dict.set_item("net_calmar_ratio", metrics.net_calmar_ratio)?;
+        // Gross
+        metrics_dict.set_item("gross_total_return", metrics.gross_total_return)?;
+        metrics_dict.set_item("gross_annualized_return", metrics.gross_annualized_return)?;
+        metrics_dict.set_item(
+            "gross_annualized_volatility",
+            metrics.gross_annualized_volatility,
+        )?;
+        metrics_dict.set_item("gross_sharpe_ratio", metrics.gross_sharpe_ratio)?;
+        metrics_dict.set_item("gross_sortino_ratio", metrics.gross_sortino_ratio)?;
+        metrics_dict.set_item("gross_max_drawdown", metrics.gross_max_drawdown)?;
+        metrics_dict.set_item("gross_avg_drawdown", metrics.gross_avg_drawdown)?;
+        metrics_dict.set_item("gross_avg_daily_return", metrics.gross_avg_daily_return)?;
+        metrics_dict.set_item("gross_win_rate", metrics.gross_win_rate)?;
+        metrics_dict.set_item("gross_calmar_ratio", metrics.gross_calmar_ratio)?;
+        // Common
+        metrics_dict.set_item("num_trades", metrics.num_trades as f64)?; // Cast usize to f64
         metrics_dict.set_item("cumulative_volume_traded", metrics.cumulative_volume_traded)?;
+        metrics_dict.set_item("total_fees_paid", metrics.total_fees_paid)?;
         metrics_dict.set_item("portfolio_turnover", metrics.portfolio_turnover)?;
         metrics_dict.set_item("holding_period_years", metrics.holding_period_years)?;
-        metrics_dict.set_item("total_fees_paid", metrics.total_fees_paid)?;
 
         // Simulation statistics
-        metrics_dict.set_item("num_price_points", prices.len())?;
+        metrics_dict.set_item("num_price_points", prices.len() as f64)?; // Cast usize to f64
         metrics_dict.set_item("num_weight_events", weight_events.len())?;
         metrics_dict.set_item("parsing_time_ms", parsing_time.as_millis() as f64)?;
         metrics_dict.set_item("simulation_time_ms", simulation_time.as_millis() as f64)?;

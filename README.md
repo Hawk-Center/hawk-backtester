@@ -144,7 +144,7 @@ The `run` method returns a Python dictionary containing four Polars DataFrames:
 4.  `backtest_metrics`: Contains summary statistics calculated from the **net** performance.
     - `metric`: Name of the performance or simulation metric.
     - `value`: The calculated value of the metric.
-    - Key metrics include: `total_return`, `annualized_return`, `annualized_volatility`, `sharpe_ratio`, `sortino_ratio`, `max_drawdown`, `total_fees_paid`, `portfolio_turnover`, etc.
+    - Key metrics include: `net_total_return`, `net_annualized_return`, `net_annualized_volatility`, `net_sharpe_ratio`, `net_sortino_ratio`, `net_max_drawdown`, `net_calmar_ratio` (Annualized Return / abs(Max Drawdown)), `total_fees_paid`, `portfolio_turnover`, `gross_total_return`, `gross_annualized_return`, `gross_sharpe_ratio`, `gross_calmar_ratio`, etc.
 
 ## Trading Fees
 

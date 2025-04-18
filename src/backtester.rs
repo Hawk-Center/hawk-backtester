@@ -103,6 +103,7 @@ impl<'a> Backtester<'a> {
         let mut gross_daily_log_returns = Vec::new();
         let mut gross_cumulative_returns = Vec::new();
         let mut gross_cumulative_log_returns = Vec::new();
+        let mut gross_drawdowns = Vec::new(); // Drawdown based on gross value
 
         let mut volume_traded = Vec::new();
         let mut cumulative_volume_traded = 0.0;
@@ -133,6 +134,7 @@ impl<'a> Backtester<'a> {
         let mut last_net_value = self.initial_value;
         let mut last_gross_value = self.initial_value;
         let mut peak_net_value = self.initial_value; // Peak value for drawdown calc should be net
+        let mut peak_gross_value = self.initial_value; // Peak value for gross drawdown
         let mut weight_index = 0;
         let n_events = self.weight_events.len();
         let mut num_trades = 0;
@@ -175,6 +177,15 @@ impl<'a> Backtester<'a> {
             };
             let gross_cumulative_log_return = if self.initial_value > 0.0 {
                 (gross_value_today / self.initial_value).ln()
+            } else {
+                0.0
+            };
+
+            // Update peak gross value
+            peak_gross_value = peak_gross_value.max(gross_value_today);
+            // Compute gross drawdown
+            let gross_drawdown = if peak_gross_value > 0.0 {
+                (gross_value_today / peak_gross_value) - 1.0
             } else {
                 0.0
             };
@@ -297,7 +308,7 @@ impl<'a> Backtester<'a> {
             peak_net_value = peak_net_value.max(net_value_today);
 
             // Compute drawdown based on *net* value decline from peak *net* value
-            let drawdown = if peak_net_value > 0.0 {
+            let net_drawdown = if peak_net_value > 0.0 {
                 (net_value_today / peak_net_value) - 1.0
             } else {
                 0.0
@@ -333,13 +344,16 @@ impl<'a> Backtester<'a> {
             net_daily_log_returns.push(net_daily_log_return);
             net_cumulative_returns.push(net_cumulative_return);
             net_cumulative_log_returns.push(net_cumulative_log_return);
-            net_drawdowns.push(drawdown);
+            net_drawdowns.push(net_drawdown);
             // Store Gross
             gross_portfolio_values.push(gross_value_today);
             gross_daily_returns.push(gross_daily_return);
             gross_daily_log_returns.push(gross_daily_log_return);
             gross_cumulative_returns.push(gross_cumulative_return);
             gross_cumulative_log_returns.push(gross_cumulative_log_return);
+            gross_drawdowns.push(gross_drawdown);
+            // Other Series
+            // volume_traded.push(trade_volume);
 
             // Update last values for next iteration
             last_net_value = net_value_today;
@@ -349,12 +363,15 @@ impl<'a> Backtester<'a> {
         // Calculate metrics using NET returns and values
         let metrics = BacktestMetrics::calculate(
             &net_daily_returns,
-            &net_drawdowns,   // Use net drawdowns
+            &net_drawdowns,        // Use net drawdowns
+            &net_portfolio_values, // Use net portfolio values for avg calculation
+            &gross_daily_returns,
+            &gross_drawdowns,
+            &gross_portfolio_values,
             timestamps.len(), // Use length of timestamps which reflects actual days processed
             num_trades,
             volume_traded.clone(),
             cumulative_volume_traded,
-            &net_portfolio_values, // Use net portfolio values for avg calculation
             total_fees_paid,
         );
 
@@ -386,6 +403,7 @@ impl<'a> Backtester<'a> {
             "gross_cumulative_log_return".into(),
             gross_cumulative_log_returns,
         );
+        let gross_drawdown_series = Series::new("gross_drawdown".into(), gross_drawdowns);
         // Other Series
         let volume_traded_series = Series::new("volume_traded".into(), volume_traded);
 
@@ -404,6 +422,7 @@ impl<'a> Backtester<'a> {
             gross_daily_log_return_series.into(),
             gross_cumulative_return_series.into(),
             gross_cumulative_log_return_series.into(),
+            gross_drawdown_series.into(),
             // Other Columns
             volume_traded_series.into(),
         ])?;

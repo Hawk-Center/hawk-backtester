@@ -384,6 +384,7 @@ fn test_dataframe_output() {
         "gross_daily_log_return",
         "gross_cumulative_return",
         "gross_cumulative_log_return",
+        "gross_drawdown",
         "volume_traded",
     ];
     assert_eq!(df.get_column_names(), expected_cols);
