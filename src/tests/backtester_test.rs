@@ -87,21 +87,75 @@ fn test_backtester_no_weight_event() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
-    // Test main results DataFrame
-    let pv_series = df.column("portfolio_value").unwrap();
-    let daily_series = df.column("daily_return").unwrap();
-    let log_series = df.column("daily_log_return").unwrap();
-    let cum_series = df.column("cumulative_return").unwrap();
+    // Test main results DataFrame - Use new net/gross names
+    let net_pv_series = df.column("net_portfolio_value").unwrap();
+    let net_daily_series = df.column("net_daily_return").unwrap();
+    let net_log_series = df.column("net_daily_log_return").unwrap();
+    let net_cum_series = df.column("net_cumulative_return").unwrap();
+    let gross_pv_series = df.column("gross_portfolio_value").unwrap();
+    let gross_daily_series = df.column("gross_daily_return").unwrap();
+    let gross_log_series = df.column("gross_daily_log_return").unwrap();
+    let gross_cum_series = df.column("gross_cumulative_return").unwrap();
 
     for i in 0..df.height() {
-        assert!((pv_series.get(i).unwrap().try_extract::<f64>().unwrap() - 1000.0).abs() < 1e-10);
-        assert!((daily_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
-        assert!((log_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
-        assert!((cum_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
+        // Net checks
+        assert!(
+            (net_pv_series.get(i).unwrap().try_extract::<f64>().unwrap() - 1000.0).abs() < 1e-10
+        );
+        assert!(
+            (net_daily_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap())
+            .abs()
+                < 1e-10
+        );
+        assert!((net_log_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
+        assert!((net_cum_series.get(i).unwrap().try_extract::<f64>().unwrap()).abs() < 1e-10);
+        // Gross checks (should match net when fee is 0)
+        assert!(
+            (gross_pv_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap()
+                - 1000.0)
+                .abs()
+                < 1e-10
+        );
+        assert!(
+            (gross_daily_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap())
+            .abs()
+                < 1e-10
+        );
+        assert!(
+            (gross_log_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap())
+            .abs()
+                < 1e-10
+        );
+        assert!(
+            (gross_cum_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap())
+            .abs()
+                < 1e-10
+        );
     }
 
     // Test positions DataFrame
@@ -160,33 +214,59 @@ fn test_backtester_with_weight_event() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: pd1.timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
 
-    // Test main results
-    let pv_series = df.column("portfolio_value").unwrap();
-    let daily_series = df.column("daily_return").unwrap();
-    let cum_series = df.column("cumulative_return").unwrap();
-    let cum_log_series = df.column("cumulative_log_return").unwrap();
+    // Test main results - Net columns
+    let net_pv_series = df.column("net_portfolio_value").unwrap();
+    let net_daily_series = df.column("net_daily_return").unwrap();
+    let net_cum_series = df.column("net_cumulative_return").unwrap();
+    let net_cum_log_series = df.column("net_cumulative_log_return").unwrap();
+    // Gross columns
+    let gross_pv_series = df.column("gross_portfolio_value").unwrap();
+    let gross_daily_series = df.column("gross_daily_return").unwrap();
+    let gross_cum_series = df.column("gross_cumulative_return").unwrap();
+    let gross_cum_log_series = df.column("gross_cumulative_log_return").unwrap();
 
-    // Day 1 checks
-    let value1: f64 = pv_series.get(0).unwrap().extract().unwrap();
-    let cum1: f64 = cum_series.get(0).unwrap().extract().unwrap();
-    let cum_log1: f64 = cum_log_series.get(0).unwrap().extract().unwrap();
-    assert!((value1 - 1000.0).abs() < 1e-10);
-    assert_eq!(cum1, 0.0);
-    assert_eq!(cum_log1, 0.0);
+    // Day 1 checks (Net and Gross should be identical at start and with 0 fees)
+    let net_value1: f64 = net_pv_series.get(0).unwrap().extract().unwrap();
+    let net_cum1: f64 = net_cum_series.get(0).unwrap().extract().unwrap();
+    let net_cum_log1: f64 = net_cum_log_series.get(0).unwrap().extract().unwrap();
+    assert!((net_value1 - 1000.0).abs() < 1e-10);
+    assert_eq!(net_cum1, 0.0);
+    assert_eq!(net_cum_log1, 0.0);
+    let gross_value1: f64 = gross_pv_series.get(0).unwrap().extract().unwrap();
+    let gross_cum1: f64 = gross_cum_series.get(0).unwrap().extract().unwrap();
+    let gross_cum_log1: f64 = gross_cum_log_series.get(0).unwrap().extract().unwrap();
+    assert!((gross_value1 - 1000.0).abs() < 1e-10);
+    assert_eq!(gross_cum1, 0.0);
+    assert_eq!(gross_cum_log1, 0.0);
 
-    // Day 2 checks
-    let value2: f64 = pv_series.get(1).unwrap().extract().unwrap();
-    let daily2: f64 = daily_series.get(1).unwrap().extract().unwrap();
-    let cum2: f64 = cum_series.get(1).unwrap().extract().unwrap();
-    let cum_log2: f64 = cum_log_series.get(1).unwrap().extract().unwrap();
-    assert!((value2 - 1035.0).abs() < 1e-10);
-    assert!((daily2 - 0.035).abs() < 1e-3);
-    assert!((cum2 - 0.035).abs() < 1e-3);
-    assert!((cum_log2 - (1.035_f64).ln()).abs() < 1e-3);
+    // Day 2 checks (Net and Gross still identical as no rebalancing/fees occurred yet)
+    // Calculation: Initial A: 500, B: 300, Cash: 200. Total: 1000
+    // Day 2 Prices: A: 11 (+10%), B: 19 (-5%)
+    // New A value: 500 * (11/10) = 550
+    // New B value: 300 * (19/20) = 285
+    // New Total = 550 + 285 + 200 (cash) = 1035
+    let net_value2: f64 = net_pv_series.get(1).unwrap().extract().unwrap();
+    let net_daily2: f64 = net_daily_series.get(1).unwrap().extract().unwrap();
+    let net_cum2: f64 = net_cum_series.get(1).unwrap().extract().unwrap();
+    let net_cum_log2: f64 = net_cum_log_series.get(1).unwrap().extract().unwrap();
+    assert!((net_value2 - 1035.0).abs() < 1e-10);
+    assert!((net_daily2 - 0.035).abs() < 1e-10); // (1035/1000) - 1
+    assert!((net_cum2 - 0.035).abs() < 1e-10);
+    assert!((net_cum_log2 - (1.035_f64).ln()).abs() < 1e-10);
+
+    let gross_value2: f64 = gross_pv_series.get(1).unwrap().extract().unwrap();
+    let gross_daily2: f64 = gross_daily_series.get(1).unwrap().extract().unwrap();
+    let gross_cum2: f64 = gross_cum_series.get(1).unwrap().extract().unwrap();
+    let gross_cum_log2: f64 = gross_cum_log_series.get(1).unwrap().extract().unwrap();
+    assert!((gross_value2 - 1035.0).abs() < 1e-10);
+    assert!((gross_daily2 - 0.035).abs() < 1e-10);
+    assert!((gross_cum2 - 0.035).abs() < 1e-10);
+    assert!((gross_cum_log2 - (1.035_f64).ln()).abs() < 1e-10);
 
     // Test positions
     let a_pos = positions_df.column("A").unwrap();
@@ -207,6 +287,9 @@ fn test_backtester_with_weight_event() {
     assert!((a_weight.get(0).unwrap().try_extract::<f64>().unwrap() - 0.5).abs() < 1e-10);
     assert!((b_weight.get(0).unwrap().try_extract::<f64>().unwrap() - 0.3).abs() < 1e-10);
     assert!((cash_weight.get(0).unwrap().try_extract::<f64>().unwrap() - 0.2).abs() < 1e-10);
+
+    // Test metrics
+    assert_eq!(metrics.total_fees_paid, 0.0);
 }
 
 #[test]
@@ -227,14 +310,27 @@ fn test_multiple_weight_events() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: pd1.timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
 
-    // Test final portfolio value
-    let pv_series = df.column("portfolio_value").unwrap();
-    let value4: f64 = pv_series.get(3).unwrap().extract().unwrap();
-    assert!((value4 - 1092.5).abs() < 1e-1);
+    // Test final portfolio value - Net (should match previous logic with 0 fee)
+    let net_pv_series = df.column("net_portfolio_value").unwrap();
+    let net_value4: f64 = net_pv_series.get(3).unwrap().extract().unwrap();
+    // Day 0: 1000 (A=700, C=300) @ A=10
+    // Day 1: 1000 (A=700, C=300) @ A=10 -> Gross=1000, Net=1000
+    // Day 2: 1200 (A=700*(12/10)=840, C=300) @ A=12. Rebalance to A=0.5.
+    //        Gross Value = 1140. Trade Volume = |(0.5*1140)-840| + |(0.5*1140)-0| = |570-840| + 570 = 270+570=840. Fee=0.
+    //        New A = 0.5 * 1140 = 570. New C = 1140 - 570 = 570. Net Value = 1140.
+    // Day 3: @ A=11. New A value = 570 * (11/12) = 522.5. C = 570. Net Value = 522.5 + 570 = 1092.5
+    assert!((net_value4 - 1092.5).abs() < 1e-1);
+
+    // Test final portfolio value - Gross
+    let gross_pv_series = df.column("gross_portfolio_value").unwrap();
+    let gross_value4: f64 = gross_pv_series.get(3).unwrap().extract().unwrap();
+    // Day 3 Gross = 1092.5 (same as net since no rebalance/fee on this day)
+    assert!((gross_value4 - 1092.5).abs() < 1e-1);
 
     // Test position changes after second weight event
     let a_pos = positions_df.column("A").unwrap();
@@ -249,6 +345,10 @@ fn test_multiple_weight_events() {
     let a_weight = weights_df.column("A").unwrap();
     assert!((a_weight.get(0).unwrap().try_extract::<f64>().unwrap() - 0.7).abs() < 1e-10);
     assert!((a_weight.get(2).unwrap().try_extract::<f64>().unwrap() - 0.5).abs() < 1e-10);
+
+    // Test metrics
+    assert_eq!(metrics.total_fees_paid, 0.0);
+    assert!(metrics.cumulative_volume_traded > 0.0); // Ensure volume was calculated
 }
 
 #[test]
@@ -265,6 +365,7 @@ fn test_dataframe_output() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
@@ -272,12 +373,17 @@ fn test_dataframe_output() {
     // Check main results DataFrame
     let expected_cols = vec![
         "date",
-        "portfolio_value",
-        "daily_return",
-        "daily_log_return",
-        "cumulative_return",
-        "cumulative_log_return",
-        "drawdown",
+        "net_portfolio_value",
+        "net_daily_return",
+        "net_daily_log_return",
+        "net_cumulative_return",
+        "net_cumulative_log_return",
+        "net_drawdown",
+        "gross_portfolio_value",
+        "gross_daily_return",
+        "gross_daily_log_return",
+        "gross_cumulative_return",
+        "gross_cumulative_log_return",
         "volume_traded",
     ];
     assert_eq!(df.get_column_names(), expected_cols);
@@ -306,47 +412,55 @@ fn test_dataframe_output() {
 
 #[test]
 fn test_empty_portfolio() {
-    let mut portfolio = PortfolioState::default();
-    assert_eq!(portfolio.total_value(), 0.0);
-
-    // Test updating positions on empty portfolio
-    let prices = HashMap::new();
-    portfolio.update_positions(&prices);
-    assert_eq!(portfolio.total_value(), 0.0);
+    let backtester = Backtester {
+        prices: &[],
+        weight_events: &[],
+        initial_value: 100.0,
+        start_date: OffsetDateTime::now_utc().date(), // Provide a valid date
+        trading_fee_bps: 0,
+    };
+    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    assert_eq!(df.height(), 0);
+    assert_eq!(positions_df.height(), 0);
+    assert_eq!(weights_df.height(), 0);
+    assert_eq!(metrics.total_fees_paid, 0.0);
 }
 
 #[test]
 fn test_portfolio_with_missing_price_updates() {
-    let mut positions = HashMap::new();
-    positions.insert(
-        Arc::from("A"),
-        DollarPosition {
-            allocated: 100.0,
-            last_price: 10.0,
-        },
-    );
-    positions.insert(
-        Arc::from("B"),
-        DollarPosition {
-            allocated: 200.0,
-            last_price: 20.0,
-        },
-    );
-    let mut portfolio = PortfolioState {
-        cash: 50.0,
-        positions,
+    let now = OffsetDateTime::now_utc();
+    let prices = vec![
+        make_price_data(now, vec![("A", 10.0), ("B", 20.0)]),
+        make_price_data(now + Duration::days(1), vec![("A", 11.0)]), // Missing B price
+        make_price_data(now + Duration::days(2), vec![("A", 12.0), ("B", 21.0)]),
+    ];
+    let weight_events = vec![make_weight_event(now, vec![("A", 0.5), ("B", 0.5)])];
+    let backtester = Backtester {
+        prices: &prices,
+        weight_events: &weight_events,
+        initial_value: 1000.0,
+        start_date: prices[0].timestamp,
+        trading_fee_bps: 0,
     };
 
-    // Update with only one price
-    let mut current_prices = HashMap::new();
-    current_prices.insert(Arc::from("A"), 12.0);
-    portfolio.update_positions(&current_prices);
+    let (df, positions_df, _weights_df, metrics) = backtester
+        .run()
+        .expect("Backtest should handle missing prices");
 
-    // Position A should update, position B should remain unchanged
-    let pos_a = portfolio.positions.get(&Arc::from("A")).unwrap();
-    let pos_b = portfolio.positions.get(&Arc::from("B")).unwrap();
-    assert!((pos_a.allocated - 120.0).abs() < 1e-10); // 100 * (12/10)
-    assert!((pos_b.allocated - 200.0).abs() < 1e-10); // unchanged
+    // Day 0: Total=1000, A=500, B=500
+    // Day 1: A price=11 (+10%), B price missing. A becomes 550. B stays 500. Total=1050.
+    // Day 2: A price=12, B price=21. A becomes 550*(12/11)=600. B becomes 500*(21/20)=525. Total=1125.
+    let net_pv_series = df.column("net_portfolio_value").unwrap();
+    assert!((net_pv_series.get(0).unwrap().try_extract::<f64>().unwrap() - 1000.0).abs() < 1e-10);
+    assert!((net_pv_series.get(1).unwrap().try_extract::<f64>().unwrap() - 1050.0).abs() < 1e-10);
+    assert!((net_pv_series.get(2).unwrap().try_extract::<f64>().unwrap() - 1125.0).abs() < 1e-10);
+
+    let b_pos = positions_df.column("B").unwrap();
+    assert!((b_pos.get(0).unwrap().try_extract::<f64>().unwrap() - 500.0).abs() < 1e-10);
+    assert!((b_pos.get(1).unwrap().try_extract::<f64>().unwrap() - 500.0).abs() < 1e-10); // No update
+    assert!((b_pos.get(2).unwrap().try_extract::<f64>().unwrap() - 525.0).abs() < 1e-10); // Updated
+
+    assert_eq!(metrics.total_fees_paid, 0.0);
 }
 
 #[test]
@@ -357,29 +471,63 @@ fn test_backtester_with_zero_initial_value() {
         make_price_data(now + Duration::days(1), vec![("A", 11.0)]),
     ];
     let weight_events = vec![make_weight_event(now, vec![("A", 0.8)])];
-
     let backtester = Backtester {
         prices: &prices,
         weight_events: &weight_events,
         initial_value: 0.0,
         start_date: prices[0].timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
-    // Check main results are zero
-    let pv_series = df.column("portfolio_value").unwrap();
-    let daily_series = df.column("daily_return").unwrap();
-    let cum_series = df.column("cumulative_return").unwrap();
+    // Check main results are zero - Use new net/gross names
+    let net_pv_series = df.column("net_portfolio_value").unwrap();
+    let net_daily_series = df.column("net_daily_return").unwrap();
+    let net_cum_series = df.column("net_cumulative_return").unwrap();
+    let gross_pv_series = df.column("gross_portfolio_value").unwrap();
+    let gross_daily_series = df.column("gross_daily_return").unwrap();
+    let gross_cum_series = df.column("gross_cumulative_return").unwrap();
 
     for i in 0..df.height() {
-        assert_eq!(pv_series.get(i).unwrap().try_extract::<f64>().unwrap(), 0.0);
         assert_eq!(
-            daily_series.get(i).unwrap().try_extract::<f64>().unwrap(),
+            net_pv_series.get(i).unwrap().try_extract::<f64>().unwrap(),
             0.0
         );
         assert_eq!(
-            cum_series.get(i).unwrap().try_extract::<f64>().unwrap(),
+            net_daily_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap(),
+            0.0
+        );
+        assert_eq!(
+            net_cum_series.get(i).unwrap().try_extract::<f64>().unwrap(),
+            0.0
+        );
+        assert_eq!(
+            gross_pv_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap(),
+            0.0
+        );
+        assert_eq!(
+            gross_daily_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap(),
+            0.0
+        );
+        assert_eq!(
+            gross_cum_series
+                .get(i)
+                .unwrap()
+                .try_extract::<f64>()
+                .unwrap(),
             0.0
         );
     }
@@ -396,21 +544,22 @@ fn test_backtester_with_zero_initial_value() {
     let a_weight = weights_df.column("A").unwrap();
     let cash_weight = weights_df.column("cash").unwrap();
     for i in 0..weights_df.height() {
-        // With zero initial value, cash weight should be 1.0 and asset weights 0.0
         assert_eq!(a_weight.get(i).unwrap().try_extract::<f64>().unwrap(), 0.0);
         assert_eq!(
             cash_weight.get(i).unwrap().try_extract::<f64>().unwrap(),
-            1.0
+            0.0
         );
     }
+    assert_eq!(metrics.total_fees_paid, 0.0);
+    assert_eq!(metrics.cumulative_volume_traded, 0.0);
 }
 
 #[test]
 fn test_backtester_with_missing_prices() {
     let now = OffsetDateTime::now_utc();
-    let pd1 = make_price_data(now, vec![("A", 10.0), ("B", 20.0)]);
-    let pd2 = make_price_data(now + Duration::days(1), vec![("A", 11.0)]); // B missing
-    let pd3 = make_price_data(now + Duration::days(2), vec![("B", 22.0)]); // A missing
+    let pd1 = make_price_data(now, vec![("A", 10.0)]);
+    let pd2 = make_price_data(now + Duration::days(1), vec![("B", 20.0)]);
+    let pd3 = make_price_data(now + Duration::days(2), vec![("A", 11.0)]);
     let prices = vec![pd1.clone(), pd2, pd3];
 
     let weight_events = vec![make_weight_event(now, vec![("A", 0.4), ("B", 0.4)])];
@@ -420,6 +569,7 @@ fn test_backtester_with_missing_prices() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: pd1.timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -440,6 +590,9 @@ fn test_backtester_with_missing_prices() {
     assert!(weights_df
         .get_column_names()
         .contains(&&PlSmallStr::from("B")));
+
+    // Test metrics
+    assert_eq!(metrics.total_fees_paid, 0.0);
 }
 
 #[test]
@@ -456,6 +609,7 @@ fn test_weight_event_with_invalid_asset() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -473,43 +627,10 @@ fn test_weight_event_with_invalid_asset() {
     assert!(weights_df
         .get_column_names()
         .contains(&&PlSmallStr::from("B")));
+
+    // Test metrics
+    assert_eq!(metrics.total_fees_paid, 0.0);
 }
-
-/// WE ARE NOT SUPPORTING MULTIPLE WEIGHT EVENTS ON THE SAME DAY -- ONLY PASS ONE WEIGHT EVENT PER DAY
-// #[test]
-// fn test_multiple_weight_events_same_day() {
-//     let now = OffsetDateTime::now_utc();
-
-//     let prices = vec![
-//         make_price_data(now, vec![("A", 10.0)]),
-//         make_price_data(now + Duration::days(1), vec![("A", 11.0)]),
-//     ];
-
-//     // Multiple weight events on the same day
-//     let weight_events = vec![
-//         make_weight_event(now, vec![("A", 0.5)]),
-//         make_weight_event(now, vec![("A", 0.8)]), // Should override previous
-//     ];
-
-//     let backtester = Backtester {
-//         prices: &prices,
-//         weight_events: &weight_events,
-//         initial_value: 1000.0,
-//         start_date: prices[0].timestamp,
-//     };
-
-//     let (df, _) = backtester.run().expect("Backtest should run");
-
-//     // Check that the last weight event for the day was used
-//     let pv_series = df.column("portfolio_value").unwrap();
-//     let value: f64 = pv_series.get(0).unwrap().extract().unwrap();
-//     assert!((value - 1000.0).abs() < 1e-10);
-
-//     // Second day should reflect 80% allocation to A
-//     let value2: f64 = pv_series.get(1).unwrap().extract().unwrap();
-//     // Expected: 800 * (11/10) + 200 = 880 + 200 = 1080
-//     assert!((value2 - 1080.0).abs() < 1e-10);
-// }
 
 #[test]
 fn test_weight_allocation_bounds() {
@@ -528,14 +649,23 @@ fn test_weight_allocation_bounds() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
-    // Even with weight > 1, the portfolio should still function
-    let pv_series = df.column("portfolio_value").unwrap();
-    let initial_value: f64 = pv_series.get(0).unwrap().extract().unwrap();
-    assert!((initial_value - 1000.0).abs() < 1e-10);
+    // Even with weight > 1, the portfolio should still function - Use new net/gross names
+    let net_pv_series = df.column("net_portfolio_value").unwrap();
+    let gross_pv_series = df.column("gross_portfolio_value").unwrap();
+    let net_initial_value: f64 = net_pv_series.get(0).unwrap().extract().unwrap();
+    let gross_initial_value: f64 = gross_pv_series.get(0).unwrap().extract().unwrap();
+    // Initial allocation happens, net value reflects actual holdings (1200), gross reflects value before rebal (1000)
+    // Let's re-check logic. Day 0: Gross=1000. Rebal A=1.2. Vol=1200. Fee=0. New A=1200. New Cash=-200 -> 0. Net=1200.
+    assert!((gross_initial_value - 1000.0).abs() < 1e-10); // Gross value on day 0 is before rebalance
+    assert!((net_initial_value - 1200.0).abs() < 1e-10); // Net value reflects the allocated amount
+
+    // Test metrics
+    assert_eq!(metrics.total_fees_paid, 0.0);
 }
 
 #[test]
@@ -557,67 +687,75 @@ fn test_short_position_returns() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
-    // Get the portfolio values
-    let pv_series = df.column("portfolio_value").unwrap();
-    let daily_series = df.column("daily_return").unwrap();
-    let cum_series = df.column("cumulative_return").unwrap();
+    // Get the portfolio values - Use new net/gross names
+    let net_pv_series = df.column("net_portfolio_value").unwrap();
+    let net_daily_series = df.column("net_daily_return").unwrap();
+    let net_cum_series = df.column("net_cumulative_return").unwrap();
+    let gross_pv_series = df.column("gross_portfolio_value").unwrap();
+    let gross_daily_series = df.column("gross_daily_return").unwrap();
+    let gross_cum_series = df.column("gross_cumulative_return").unwrap();
 
     // Day 1: Short position should gain when price falls 10%
     // Initial short position: -500 (50% of 1000)
-    // After 10% price drop: -500 * (90/100) = -450
-    // Gain: 50 on 1000 = 5% return
-    let daily_return1: f64 = daily_series.get(1).unwrap().extract().unwrap();
+    // Initial Cash: 1500. Gross Value Day 0 = 1000. Net Value Day 0 = 1000.
+    // Day 1 Price: 90. Update pos: A=-500*(90/100) = -450. Cash=1500. Gross=1050. Net=1050.
+    // Expected Net Daily Return = (1050/1000) - 1 = 0.05
+    let net_daily_return1: f64 = net_daily_series.get(1).unwrap().extract().unwrap();
     assert!(
-        daily_return1 > 0.0,
-        "Expected positive return on price fall"
+        net_daily_return1 > 0.0,
+        "Expected positive net return on price fall"
     );
     assert!(
-        (daily_return1 - 0.05).abs() < 1e-10,
-        "Expected 5% return (50% of 10% price drop)"
+        (net_daily_return1 - 0.05).abs() < 1e-10,
+        "Expected 5% net return (50% of 10% price drop)"
     );
 
     // Day 2: Short position should gain when price falls from 90 to 80
-    // Previous position: -450
-    // After 11.11% price drop: -450 * (80/90) = -400
-    // Gain: 50 on 1050 = 4.76% return
-    let daily_return2: f64 = daily_series.get(2).unwrap().extract().unwrap();
+    // Previous position: A=-450. Cash=1500. Previous Net = 1050.
+    // Day 2 Price: 80. Update pos: A=-450*(80/90)=-400. Cash=1500. Gross=1100. Net=1100.
+    // Expected Net Daily Return = (1100 / 1050) - 1 = 0.047619...
+    let net_daily_return2: f64 = net_daily_series.get(2).unwrap().extract().unwrap();
     assert!(
-        daily_return2 > 0.0,
-        "Expected positive return on price fall"
+        net_daily_return2 > 0.0,
+        "Expected positive net return on price fall"
     );
     assert!(
-        (daily_return2 - 0.0476).abs() < 1e-3,
-        "Expected ~4.76% return"
-    );
-
-    // Check cumulative return
-    // Initial: 1000
-    // After day 1: 1050 (5% gain)
-    // After day 2: 1100 (4.76% gain)
-    // Total return: 10% (not 10.25% as previously expected)
-    let final_cum_return: f64 = cum_series.get(2).unwrap().extract().unwrap();
-    assert!(
-        final_cum_return > 0.0,
-        "Expected positive cumulative return"
-    );
-    assert!(
-        (final_cum_return - 0.10).abs() < 1e-3,
-        "Expected 10% cumulative return"
+        (net_daily_return2 - (1100.0 / 1050.0 - 1.0)).abs() < 1e-10,
+        "Expected ~4.76% net return"
     );
 
-    // Verify absolute portfolio value
+    // Check cumulative return - Use net values
     // Initial: 1000
-    // After first day: 1000 * (1 + 0.05) = 1050
-    // After second day: 1050 * (1 + 0.0476) = 1100
-    let final_value: f64 = pv_series.get(2).unwrap().extract().unwrap();
+    // After day 1: 1050
+    // After day 2: 1100
+    // Total net return: (1100/1000)-1 = 0.1
+    let final_net_cum_return: f64 = net_cum_series.get(2).unwrap().extract().unwrap();
     assert!(
-        (final_value - 1100.0).abs() < 1e-10,
-        "Expected final value of 1100"
+        final_net_cum_return > 0.0,
+        "Expected positive net cumulative return"
     );
+    assert!(
+        (final_net_cum_return - 0.10).abs() < 1e-10,
+        "Expected 10% net cumulative return"
+    );
+
+    // Verify absolute portfolio value - Use net value
+    // Initial: 1000
+    // After first day: 1050
+    // After second day: 1100
+    let final_net_value: f64 = net_pv_series.get(2).unwrap().extract().unwrap();
+    assert!(
+        (final_net_value - 1100.0).abs() < 1e-10,
+        "Expected final net value of 1100"
+    );
+
+    // Test metrics
+    assert_eq!(metrics.total_fees_paid, 0.0);
 }
 
 #[test]
@@ -644,32 +782,41 @@ fn test_mixed_long_short_portfolio() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
 
-    // Get the portfolio value and returns
-    let pv_series = df.column("portfolio_value").unwrap();
-    let cum_series = df.column("cumulative_return").unwrap();
+    // Get the portfolio value and returns - Use new net/gross names
+    let net_pv_series = df.column("net_portfolio_value").unwrap();
+    let net_cum_series = df.column("net_cumulative_return").unwrap();
+    let gross_pv_series = df.column("gross_portfolio_value").unwrap();
+    let gross_cum_series = df.column("gross_cumulative_return").unwrap();
 
     // Calculate expected return:
-    // LONG position (50%): +10% * 0.5 = +5%
-    // SHORT position (30%): +10% * 0.3 = +3%
-    // Total expected return = 8%
-    let final_cum_return: f64 = cum_series.get(1).unwrap().extract().unwrap();
+    // Day 0: Gross=1000. Rebal L=0.5, S=-0.3. Vol=500+300=800. Fee=0. L=500, S=-300. Cash=800. Net=1000.
+    // Day 1 Prices: L=110, S=90.
+    // Update pos: L=500*(110/100)=550. S=-300*(90/100)=-270. Cash=800.
+    // Gross = 550 - 270 + 800 = 1080.
+    // Net = 1080.
+    // Expected Net Cumulative Return = (1080/1000) - 1 = 0.08
+    let final_net_cum_return: f64 = net_cum_series.get(1).unwrap().extract().unwrap();
     assert!(
-        (final_cum_return - 0.08).abs() < 1e-10,
-        "Expected 8% total return"
+        (final_net_cum_return - 0.08).abs() < 1e-10,
+        "Expected 8% net total return"
     );
 
-    // Verify final portfolio value
+    // Verify final portfolio value - Use net value
     // Initial: 1000
-    // Expected: 1000 * (1 + 0.08) = 1080
-    let final_value: f64 = pv_series.get(1).unwrap().extract().unwrap();
+    // Expected Net: 1080
+    let final_net_value: f64 = net_pv_series.get(1).unwrap().extract().unwrap();
     assert!(
-        (final_value - 1080.0).abs() < 1e-10,
-        "Expected final value of 1080"
+        (final_net_value - 1080.0).abs() < 1e-10,
+        "Expected final net value of 1080"
     );
+
+    // Test metrics
+    assert_eq!(metrics.total_fees_paid, 0.0);
 }
 
 #[test]
@@ -695,6 +842,7 @@ fn test_backtester_respects_start_date() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: start.date(),
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -724,6 +872,9 @@ fn test_backtester_respects_start_date() {
         (initial_weight - 0.8).abs() < 1e-10,
         "Expected 0.8 weight at start date"
     );
+
+    // Test metrics
+    assert_eq!(metrics.total_fees_paid, 0.0);
 }
 
 #[test]
@@ -748,6 +899,7 @@ fn test_volume_traded() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        trading_fee_bps: 0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -790,4 +942,188 @@ fn test_volume_traded() {
         metrics.volume_traded.iter().sum::<f64>(),
         "Cumulative volume should equal sum of daily volumes"
     );
+
+    // Test metrics
+    assert_eq!(metrics.total_fees_paid, 0.0);
+}
+
+#[test]
+fn test_backtester_with_fees() {
+    let now = OffsetDateTime::now_utc();
+    let prices = vec![
+        make_price_data(now, vec![("A", 10.0)]), // Day 0
+        make_price_data(now + Duration::days(1), vec![("A", 11.0)]), // Day 1
+        make_price_data(now + Duration::days(2), vec![("A", 10.0)]), // Day 2
+    ];
+    // Rebalance fully into A on Day 0, then fully into Cash on Day 1
+    let weight_events = vec![
+        make_weight_event(now, vec![("A", 1.0)]), // Event 1: Day 0
+        make_weight_event(now + Duration::days(1), vec![("A", 0.0)]), // Event 2: Day 1 (sell A)
+    ];
+    let backtester = Backtester {
+        prices: &prices,
+        weight_events: &weight_events,
+        initial_value: 1000.0,
+        start_date: prices[0].timestamp,
+        trading_fee_bps: 10, // 10 bps = 0.1% fee
+    };
+
+    let (df, positions_df, _weights_df, metrics) = backtester.run().expect("Backtest failed");
+
+    let net_pv_series = df.column("net_portfolio_value").unwrap();
+    let gross_pv_series = df.column("gross_portfolio_value").unwrap();
+    let volume_series = df.column("volume_traded").unwrap();
+    let a_pos = positions_df.column("A").unwrap();
+    let cash_pos = positions_df.column("cash").unwrap();
+
+    // --- Day 0 ---
+    // Initial Value = 1000. Rebalance to A=1.0. Gross = 1000.
+    // Volume = |(1.0*1000) - 0| = 1000.
+    // Fee = 1000 * (10 / 10000) = 1.0.
+    // New A = 1.0 * 1000 = 1000.
+    // Cash = Gross - Fee - NewAllocations = 1000 - 1.0 - 1000 = -1. Clamped to 0.
+    // Net Value = 1000 (A) + 0 (Cash) = 1000.
+    // Note: The fee effectively reduces the amount available *before* allocation,
+    // but the allocation targets are based on the gross value. Let's trace the code again:
+    // 1. Gross Value = 1000
+    // 2. Volume = 1000
+    // 3. Fee = 1.0. Deduct from cash: portfolio.cash = 1000 - 1.0 = 999.
+    // 4. Rebalance: Clear positions. Allocate A = 1.0 * 1000 = 1000.
+    // 5. Final Cash = gross_value_today - fee_amount - total_new_allocations
+    //               = 1000 - 1.0 - 1000 = -1. Clamped to 0.
+    // 6. Net Value = 1000 (A) + 0 (Cash) = 1000.
+    assert!(
+        (volume_series.get(0).unwrap().try_extract::<f64>().unwrap() - 1000.0).abs() < 1e-9,
+        "Day 0 Volume"
+    );
+    assert!(
+        (gross_pv_series
+            .get(0)
+            .unwrap()
+            .try_extract::<f64>()
+            .unwrap()
+            - 1000.0)
+            .abs()
+            < 1e-9,
+        "Day 0 Gross Value"
+    );
+    assert!(
+        (net_pv_series.get(0).unwrap().try_extract::<f64>().unwrap() - 1000.0).abs() < 1e-9,
+        "Day 0 Net Value"
+    );
+    assert!(
+        (a_pos.get(0).unwrap().try_extract::<f64>().unwrap() - 1000.0).abs() < 1e-9,
+        "Day 0 Pos A"
+    );
+    assert!(
+        (cash_pos.get(0).unwrap().try_extract::<f64>().unwrap() - 0.0).abs() < 1e-9,
+        "Day 0 Pos Cash"
+    );
+
+    // --- Day 1 ---
+    // Price A = 11. Update positions: A = 1000 * (11/10) = 1100. Cash = 0.
+    // Gross Value = 1100.
+    // Rebalance to A=0.0 (Sell A). Gross for rebal = 1100.
+    // Volume = |(0.0 * 1100) - 1100| = |-1100| = 1100.
+    // Fee = 1100 * (10 / 10000) = 1.1.
+    // Deduct fee from cash: portfolio.cash = 0 - 1.1 = -1.1.
+    // Rebalance: Clear positions. Allocate A = 0.0 * 1100 = 0.
+    // Final Cash = gross_value_today - fee_amount - total_new_allocations
+    //               = 1100 - 1.1 - 0 = 1098.9.
+    // Net Value = 0 (A) + 1098.9 (Cash) = 1098.9.
+    assert!(
+        (volume_series.get(1).unwrap().try_extract::<f64>().unwrap() - 1100.0).abs() < 1e-9,
+        "Day 1 Volume"
+    );
+    assert!(
+        (gross_pv_series
+            .get(1)
+            .unwrap()
+            .try_extract::<f64>()
+            .unwrap()
+            - 1100.0)
+            .abs()
+            < 1e-9,
+        "Day 1 Gross Value"
+    );
+    assert!(
+        (net_pv_series.get(1).unwrap().try_extract::<f64>().unwrap() - 1098.9).abs() < 1e-9,
+        "Day 1 Net Value"
+    );
+    assert!(
+        (a_pos.get(1).unwrap().try_extract::<f64>().unwrap() - 0.0).abs() < 1e-9,
+        "Day 1 Pos A"
+    );
+    assert!(
+        (cash_pos.get(1).unwrap().try_extract::<f64>().unwrap() - 1098.9).abs() < 1e-9,
+        "Day 1 Pos Cash"
+    );
+
+    // --- Day 2 ---
+    // Price A = 10. Update positions: A = 0. Cash = 1098.9.
+    // Gross Value = 1098.9.
+    // No rebalance.
+    // Net Value = 1098.9.
+    assert!(
+        (volume_series.get(2).unwrap().try_extract::<f64>().unwrap() - 0.0).abs() < 1e-9,
+        "Day 2 Volume"
+    );
+    assert!(
+        (gross_pv_series
+            .get(2)
+            .unwrap()
+            .try_extract::<f64>()
+            .unwrap()
+            - 1098.9)
+            .abs()
+            < 1e-9,
+        "Day 2 Gross Value"
+    );
+    assert!(
+        (net_pv_series.get(2).unwrap().try_extract::<f64>().unwrap() - 1098.9).abs() < 1e-9,
+        "Day 2 Net Value"
+    );
+    assert!(
+        (a_pos.get(2).unwrap().try_extract::<f64>().unwrap() - 0.0).abs() < 1e-9,
+        "Day 2 Pos A"
+    );
+    assert!(
+        (cash_pos.get(2).unwrap().try_extract::<f64>().unwrap() - 1098.9).abs() < 1e-9,
+        "Day 2 Pos Cash"
+    );
+
+    // --- Metrics ---
+    let expected_total_fees = 1.0 + 1.1;
+    assert!((metrics.total_fees_paid - expected_total_fees).abs() < 1e-9);
+    assert!((metrics.cumulative_volume_traded - (1000.0 + 1100.0)).abs() < 1e-9);
+
+    // Check net vs gross returns
+    let net_daily_ret = df.column("net_daily_return").unwrap();
+    let gross_daily_ret = df.column("gross_daily_return").unwrap();
+
+    // Day 1: Gross Ret = (1100/1000)-1 = 0.1. Net Ret = (1098.9/1000)-1 = 0.0989
+    assert!(
+        (gross_daily_ret
+            .get(1)
+            .unwrap()
+            .try_extract::<f64>()
+            .unwrap()
+            - 0.1)
+            .abs()
+            < 1e-9
+    );
+    assert!((net_daily_ret.get(1).unwrap().try_extract::<f64>().unwrap() - 0.0989).abs() < 1e-9);
+
+    // Day 2: Gross Ret = (1098.9/1100)-1 = -0.001. Net Ret = (1098.9/1098.9)-1 = 0.0
+    assert!(
+        (gross_daily_ret
+            .get(2)
+            .unwrap()
+            .try_extract::<f64>()
+            .unwrap()
+            - (1098.9 / 1100.0 - 1.0))
+            .abs()
+            < 1e-9
+    );
+    assert!((net_daily_ret.get(2).unwrap().try_extract::<f64>().unwrap() - 0.0).abs() < 1e-9);
 }

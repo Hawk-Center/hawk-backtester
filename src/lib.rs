@@ -17,16 +17,18 @@ use input_handler::{parse_price_df, parse_weights_df};
 struct HawkBacktester {
     initial_value: Option<f64>,
     start_date: Option<Date>,
+    trading_fee_bps: Option<u32>,
 }
 
 #[pymethods]
 impl HawkBacktester {
     /// Create a new backtester with a specified initial portfolio value
     #[new]
-    fn new(initial_value: Option<f64>) -> Self {
+    fn new(initial_value: Option<f64>, trading_fee_bps: Option<u32>) -> Self {
         HawkBacktester {
             initial_value,
             start_date: None,
+            trading_fee_bps,
         }
     }
 
@@ -73,6 +75,7 @@ impl HawkBacktester {
         // Use default values if not provided
         let initial_value = self.initial_value.unwrap_or(1_000_000.0);
         let start_date = self.start_date.unwrap_or(weight_events[0].timestamp);
+        let trading_fee_bps = self.trading_fee_bps.unwrap_or(0);
 
         let simulation_start = Instant::now();
         // Create and run the backtester
@@ -81,6 +84,7 @@ impl HawkBacktester {
             weight_events: &weight_events,
             initial_value,
             start_date,
+            trading_fee_bps,
         };
 
         // Run the backtest and convert the result back to a Polars DataFrame
@@ -110,6 +114,7 @@ impl HawkBacktester {
         metrics_dict.set_item("cumulative_volume_traded", metrics.cumulative_volume_traded)?;
         metrics_dict.set_item("portfolio_turnover", metrics.portfolio_turnover)?;
         metrics_dict.set_item("holding_period_years", metrics.holding_period_years)?;
+        metrics_dict.set_item("total_fees_paid", metrics.total_fees_paid)?;
 
         // Simulation statistics
         metrics_dict.set_item("num_price_points", prices.len())?;

@@ -49,11 +49,12 @@ fn test_drawdown_calculation() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        trading_fee_bps: 0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
-    let drawdown_series = df.column("drawdown").unwrap();
+    let drawdown_series = df.column("net_drawdown").unwrap();
 
     // Maximum drawdown should be around -18.18% (from 1100 to 900)
     let max_drawdown: f64 = drawdown_series
@@ -80,6 +81,7 @@ mod tests {
             vec![250.0, 250.0, 250.0, 250.0], // volume traded each time
             1000.0,                           // total volume traded
             &vec![1000.0; 252],               // constant portfolio value of 1000.0
+            0.0,                              // Total fees paid
         );
 
         // For 1000 volume over 1 year with avg portfolio value of 1000,
@@ -106,6 +108,7 @@ mod tests {
             vec![500.0; 8],     // 500 volume each trade
             4000.0,             // total volume traded
             &vec![1000.0; 504], // constant portfolio value of 1000.0
+            0.0,                // Total fees paid
         );
 
         // For 4000 volume over 2 years with avg portfolio value of 1000,
@@ -132,6 +135,7 @@ mod tests {
             vec![],             // no volume
             0.0,                // no total volume
             &vec![1000.0; 252], // constant portfolio value of 1000.0
+            0.0,                // Total fees paid
         );
 
         assert_eq!(
@@ -152,6 +156,7 @@ mod tests {
             vec![100.0; 52],    // 100 volume each week
             5200.0,             // total volume traded
             &vec![1000.0; 252], // constant portfolio value of 1000.0
+            0.0,                // Total fees paid
         );
 
         // For 5200 volume over 1 year with avg portfolio value of 1000,
@@ -183,6 +188,7 @@ mod tests {
             volume_trades.clone(),
             total_volume,
             &vec![1000.0; 252], // constant portfolio value
+            0.0,                // Total fees paid
         );
 
         // Check individual trade volumes are preserved
@@ -216,6 +222,7 @@ mod tests {
             vec![100.0], // some volume
             100.0,       // total volume
             &vec![0.0],  // zero portfolio value
+            0.0,         // Total fees paid
         );
 
         assert_eq!(
@@ -236,6 +243,7 @@ mod tests {
             vec![],  // no volume
             0.0,     // no total volume
             &vec![], // no portfolio values
+            0.0,     // Total fees paid
         );
 
         assert_eq!(

@@ -17,6 +17,7 @@ pub struct BacktestMetrics {
     pub cumulative_volume_traded: f64, // Total volume traded across all rebalances
     pub portfolio_turnover: f64,       // Annual turnover rate (ABS DOLLAR VOLUME PER YEAR / 2xBOOK)
     pub holding_period_years: f64,     // Average holding period in years (1/turnover)
+    pub total_fees_paid: f64,          // Total fees paid during the backtest
 }
 
 impl BacktestMetrics {
@@ -29,6 +30,7 @@ impl BacktestMetrics {
         volume_traded: Vec<f64>,
         cumulative_volume_traded: f64,
         portfolio_values: &[f64], // Need portfolio values to calculate average portfolio size
+        total_fees_paid: f64,     // Add total fees paid as an argument
     ) -> Self {
         // Calculate total return (arithmetic return)
         let total_return = daily_returns.iter().fold(1.0, |acc, &r| acc * (1.0 + r)) - 1.0;
@@ -140,6 +142,7 @@ impl BacktestMetrics {
             cumulative_volume_traded,
             portfolio_turnover,
             holding_period_years,
+            total_fees_paid,
         }
     }
 }

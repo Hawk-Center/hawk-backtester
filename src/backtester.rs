@@ -70,6 +70,8 @@ pub struct Backtester<'a> {
     /// The initial value of the portfolio.
     pub initial_value: f64,
     pub start_date: Date,
+    /// Trading fee in basis points (1 bps = 0.01%).
+    pub trading_fee_bps: u32,
 }
 
 impl<'a> Backtester<'a> {
@@ -88,16 +90,25 @@ impl<'a> Backtester<'a> {
     ///  - BacktestMetrics containing various performance metrics
     pub fn run(&self) -> Result<(DataFrame, DataFrame, DataFrame, BacktestMetrics), PolarsError> {
         let mut timestamps = Vec::new();
-        let mut portfolio_values = Vec::new();
-        let mut daily_returns = Vec::new();
-        let mut daily_log_returns = Vec::new();
-        let mut cumulative_returns = Vec::new();
-        let mut cumulative_log_returns = Vec::new();
-        let mut drawdowns = Vec::new();
+        // Net performance tracking
+        let mut net_portfolio_values = Vec::new();
+        let mut net_daily_returns = Vec::new();
+        let mut net_daily_log_returns = Vec::new();
+        let mut net_cumulative_returns = Vec::new();
+        let mut net_cumulative_log_returns = Vec::new();
+        let mut net_drawdowns = Vec::new(); // Drawdown is calculated based on net value
+                                            // Gross performance tracking
+        let mut gross_portfolio_values = Vec::new();
+        let mut gross_daily_returns = Vec::new();
+        let mut gross_daily_log_returns = Vec::new();
+        let mut gross_cumulative_returns = Vec::new();
+        let mut gross_cumulative_log_returns = Vec::new();
+
         let mut volume_traded = Vec::new();
         let mut cumulative_volume_traded = 0.0;
+        let mut total_fees_paid = 0.0; // Track total fees
 
-        // Track position values and weights over time
+        // Track position values and weights over time (post-rebalance, post-fee)
         let mut position_values: HashMap<Arc<str>, Vec<f64>> = HashMap::new();
         let mut position_weights: HashMap<Arc<str>, Vec<f64>> = HashMap::new();
         let mut cash_values = Vec::new();
@@ -119,8 +130,9 @@ impl<'a> Backtester<'a> {
             cash: self.initial_value,
             positions: HashMap::new(),
         };
-        let mut last_value = self.initial_value;
-        let mut peak_value = self.initial_value;
+        let mut last_net_value = self.initial_value;
+        let mut last_gross_value = self.initial_value;
+        let mut peak_net_value = self.initial_value; // Peak value for drawdown calc should be net
         let mut weight_index = 0;
         let n_events = self.weight_events.len();
         let mut num_trades = 0;
@@ -142,63 +154,106 @@ impl<'a> Backtester<'a> {
             // Update existing positions with today's prices.
             portfolio.update_positions(&price_data.prices);
 
+            // 1. Calculate Gross Value (before rebalance/fees)
+            let gross_value_today = portfolio.total_value();
+
+            // Calculate Gross Returns
+            let gross_daily_return = if last_gross_value > 0.0 {
+                (gross_value_today / last_gross_value) - 1.0
+            } else {
+                0.0
+            };
+            let gross_daily_log_return = if last_gross_value > 0.0 {
+                (gross_value_today / last_gross_value).ln()
+            } else {
+                0.0
+            };
+            let gross_cumulative_return = if self.initial_value > 0.0 {
+                (gross_value_today / self.initial_value) - 1.0
+            } else {
+                0.0
+            };
+            let gross_cumulative_log_return = if self.initial_value > 0.0 {
+                (gross_value_today / self.initial_value).ln()
+            } else {
+                0.0
+            };
+
             let mut trade_volume = 0.0; // Initialize trade volume for this day
 
-            // If a new weight event is due (check is now simpler as we pre-advanced weight_index)
+            // 2. Check for Rebalance Event & Apply Fees
             if weight_index < n_events
                 && price_data.timestamp >= self.weight_events[weight_index].timestamp
             {
                 let event = &self.weight_events[weight_index];
-                let current_total = portfolio.total_value();
+                // Use gross_value_today for rebalancing calculations
+                let rebalance_base_value = gross_value_today;
 
-                // Calculate volume traded as sum of absolute changes in positions
-
-                // Add volume from closing existing positions
+                // Calculate trade volume based on gross value and target weights
+                trade_volume = 0.0; // Reset volume calculation
+                                    // Add volume from changing/closing existing positions
                 for (asset, pos) in &portfolio.positions {
                     let new_weight = event.weights.get(asset).copied().unwrap_or(0.0);
-                    let new_allocation = new_weight * current_total;
+                    let new_allocation = new_weight * rebalance_base_value;
                     trade_volume += (new_allocation - pos.allocated).abs();
                 }
-
                 // Add volume from opening new positions
                 for (asset, &weight) in &event.weights {
                     if !portfolio.positions.contains_key(asset) {
-                        trade_volume += (weight * current_total).abs();
+                        trade_volume += (weight * rebalance_base_value).abs();
                     }
                 }
 
+                // Calculate and deduct trading fees *before* executing trades
+                let fee_amount = trade_volume * (self.trading_fee_bps as f64 / 10000.0);
+                portfolio.cash -= fee_amount; // Deduct fee from cash
+                total_fees_paid += fee_amount;
                 cumulative_volume_traded += trade_volume;
 
+                // Execute Rebalancing based on gross value
                 portfolio.positions.clear();
                 let mut allocated_sum = 0.0;
-
-                // For each asset, allocate dollars directly.
                 for (asset, weight) in &event.weights {
                     if let Some(&price) = price_data.prices.get(asset) {
-                        allocated_sum += *weight;
-                        let allocation_value = weight * current_total;
-                        portfolio.positions.insert(
-                            asset.clone(),
-                            DollarPosition {
-                                allocated: allocation_value,
-                                last_price: price,
-                            },
-                        );
+                        if price > 0.0 {
+                            // Avoid division by zero if price is zero
+                            allocated_sum += *weight;
+                            // Target allocation is based on the gross value before fees
+                            let allocation_value = weight * rebalance_base_value;
+                            portfolio.positions.insert(
+                                asset.clone(),
+                                DollarPosition {
+                                    allocated: allocation_value,
+                                    last_price: price,
+                                },
+                            );
+                        }
                     }
                 }
-                // Hold the remainder in cash.
-                portfolio.cash = current_total * (1.0 - allocated_sum);
+                // Remainder cash calculation considers the fee already deducted
+                // Cash = (Total Value Before Rebalance - Fees) - (Sum of New Allocations)
+                // Note: portfolio.cash already has fees deducted.
+                // New cash = current cash - sum of new (non-cash) allocations
+                let total_new_allocations: f64 =
+                    portfolio.positions.values().map(|p| p.allocated).sum();
+                portfolio.cash = gross_value_today - fee_amount - total_new_allocations;
+
+                // Ensure cash is not negative due to floating point inaccuracies or large fees
+                if portfolio.cash < 0.0 {
+                    portfolio.cash = 0.0;
+                }
+
                 weight_index += 1;
                 num_trades += 1;
-            }
+            } // End of rebalancing block
 
             // Record trade volume for this day (will be 0 if no rebalancing occurred)
             volume_traded.push(trade_volume);
 
-            // Compute current portfolio value.
-            let current_value = portfolio.total_value();
+            // 3. Compute Net Portfolio Value (after any rebalancing and fees)
+            let net_value_today = portfolio.total_value();
 
-            // Record position values and weights
+            // Record position values and weights (reflects post-rebalance, post-fee state)
             for (asset, values) in &mut position_values {
                 let position_value = portfolio
                     .positions
@@ -211,13 +266,13 @@ impl<'a> Backtester<'a> {
             // Record cash value and weight
             cash_values.push(portfolio.cash);
 
-            // Calculate and record position weights
+            // Calculate and record position weights (based on net value)
             for (asset, weights) in &mut position_weights {
-                let weight = if current_value > 0.0 {
+                let weight = if net_value_today > 0.0 {
                     portfolio
                         .positions
                         .get(asset)
-                        .map(|pos| pos.allocated / current_value)
+                        .map(|pos| pos.allocated / net_value_today)
                         .unwrap_or(0.0)
                 } else {
                     0.0
@@ -225,94 +280,135 @@ impl<'a> Backtester<'a> {
                 weights.push(weight);
             }
 
-            // Record cash weight
-            let cash_weight = if current_value > 0.0 {
-                portfolio.cash / current_value
+            // Record cash weight (based on net value)
+            let cash_weight = if net_value_today > 0.0 {
+                portfolio.cash / net_value_today
             } else {
-                1.0
+                // If net value is zero, cash must be 100% (or 0 if initial was 0)
+                if self.initial_value > 0.0 {
+                    1.0
+                } else {
+                    0.0
+                }
             };
             cash_weights.push(cash_weight);
 
-            // Update peak value if we have a new high
-            peak_value = peak_value.max(current_value);
+            // Update peak *net* value if we have a new high
+            peak_net_value = peak_net_value.max(net_value_today);
 
-            // Compute drawdown as percentage decline from peak
-            let drawdown = if peak_value > 0.0 {
-                (current_value / peak_value) - 1.0
-            } else {
-                0.0
-            };
-
-            // Compute the daily return based on the previous portfolio value.
-            let daily_return = if last_value > 0.0 {
-                (current_value / last_value) - 1.0
-            } else {
-                0.0
-            };
-            // Compute the daily log return
-            let daily_log_return = if last_value > 0.0 {
-                (current_value / last_value).ln()
-            } else {
-                0.0
-            };
-            // Compute the cumulative return compared to the initial portfolio value.
-            let cumulative_return = if self.initial_value > 0.0 {
-                (current_value / self.initial_value) - 1.0
-            } else {
-                0.0
-            };
-            // Compute the cumulative log return
-            let cumulative_log_return = if self.initial_value > 0.0 {
-                (current_value / self.initial_value).ln()
+            // Compute drawdown based on *net* value decline from peak *net* value
+            let drawdown = if peak_net_value > 0.0 {
+                (net_value_today / peak_net_value) - 1.0
             } else {
                 0.0
             };
 
+            // Compute Net Returns based on the previous *net* portfolio value.
+            let net_daily_return = if last_net_value > 0.0 {
+                (net_value_today / last_net_value) - 1.0
+            } else {
+                0.0
+            };
+            let net_daily_log_return = if last_net_value > 0.0 {
+                (net_value_today / last_net_value).ln()
+            } else {
+                0.0
+            };
+            let net_cumulative_return = if self.initial_value > 0.0 {
+                (net_value_today / self.initial_value) - 1.0
+            } else {
+                0.0
+            };
+            let net_cumulative_log_return = if self.initial_value > 0.0 {
+                (net_value_today / self.initial_value).ln()
+            } else {
+                0.0
+            };
+
+            // Store calculated values
             timestamps.push(format!("{}", price_data.timestamp));
-            portfolio_values.push(current_value);
-            daily_returns.push(daily_return);
-            daily_log_returns.push(daily_log_return);
-            cumulative_returns.push(cumulative_return);
-            cumulative_log_returns.push(cumulative_log_return);
-            drawdowns.push(drawdown);
+            // Store Net
+            net_portfolio_values.push(net_value_today);
+            net_daily_returns.push(net_daily_return);
+            net_daily_log_returns.push(net_daily_log_return);
+            net_cumulative_returns.push(net_cumulative_return);
+            net_cumulative_log_returns.push(net_cumulative_log_return);
+            net_drawdowns.push(drawdown);
+            // Store Gross
+            gross_portfolio_values.push(gross_value_today);
+            gross_daily_returns.push(gross_daily_return);
+            gross_daily_log_returns.push(gross_daily_log_return);
+            gross_cumulative_returns.push(gross_cumulative_return);
+            gross_cumulative_log_returns.push(gross_cumulative_log_return);
 
-            last_value = current_value;
-        }
+            // Update last values for next iteration
+            last_net_value = net_value_today;
+            last_gross_value = gross_value_today;
+        } // End of price data loop
 
-        // Calculate metrics
+        // Calculate metrics using NET returns and values
         let metrics = BacktestMetrics::calculate(
-            &daily_returns,
-            &drawdowns,
-            self.prices.len(),
+            &net_daily_returns,
+            &net_drawdowns,   // Use net drawdowns
+            timestamps.len(), // Use length of timestamps which reflects actual days processed
             num_trades,
             volume_traded.clone(),
             cumulative_volume_traded,
-            &portfolio_values,
+            &net_portfolio_values, // Use net portfolio values for avg calculation
+            total_fees_paid,
         );
 
         // Create the main performance DataFrame
         let date_series = Series::new("date".into(), &timestamps);
-        let portfolio_value_series = Series::new("portfolio_value".into(), portfolio_values);
-        let daily_return_series = Series::new("daily_return".into(), &daily_returns);
-        let daily_log_return_series = Series::new("daily_log_return".into(), daily_log_returns);
-        let cumulative_return_series = Series::new("cumulative_return".into(), cumulative_returns);
-        let cumulative_log_return_series =
-            Series::new("cumulative_log_return".into(), cumulative_log_returns);
-        let drawdown_series = Series::new("drawdown".into(), drawdowns);
+        // Net Series
+        let net_portfolio_value_series =
+            Series::new("net_portfolio_value".into(), net_portfolio_values);
+        let net_daily_return_series = Series::new("net_daily_return".into(), &net_daily_returns);
+        let net_daily_log_return_series =
+            Series::new("net_daily_log_return".into(), net_daily_log_returns);
+        let net_cumulative_return_series =
+            Series::new("net_cumulative_return".into(), net_cumulative_returns);
+        let net_cumulative_log_return_series = Series::new(
+            "net_cumulative_log_return".into(),
+            net_cumulative_log_returns,
+        );
+        let net_drawdown_series = Series::new("net_drawdown".into(), net_drawdowns);
+        // Gross Series
+        let gross_portfolio_value_series =
+            Series::new("gross_portfolio_value".into(), gross_portfolio_values);
+        let gross_daily_return_series =
+            Series::new("gross_daily_return".into(), &gross_daily_returns);
+        let gross_daily_log_return_series =
+            Series::new("gross_daily_log_return".into(), gross_daily_log_returns);
+        let gross_cumulative_return_series =
+            Series::new("gross_cumulative_return".into(), gross_cumulative_returns);
+        let gross_cumulative_log_return_series = Series::new(
+            "gross_cumulative_log_return".into(),
+            gross_cumulative_log_returns,
+        );
+        // Other Series
         let volume_traded_series = Series::new("volume_traded".into(), volume_traded);
 
         let performance_df = DataFrame::new(vec![
             date_series.clone().into(),
-            portfolio_value_series.into(),
-            daily_return_series.into(),
-            daily_log_return_series.into(),
-            cumulative_return_series.into(),
-            cumulative_log_return_series.into(),
-            drawdown_series.into(),
+            // Net Columns
+            net_portfolio_value_series.into(),
+            net_daily_return_series.into(),
+            net_daily_log_return_series.into(),
+            net_cumulative_return_series.into(),
+            net_cumulative_log_return_series.into(),
+            net_drawdown_series.into(),
+            // Gross Columns
+            gross_portfolio_value_series.into(),
+            gross_daily_return_series.into(),
+            gross_daily_log_return_series.into(),
+            gross_cumulative_return_series.into(),
+            gross_cumulative_log_return_series.into(),
+            // Other Columns
             volume_traded_series.into(),
         ])?;
 
-        // Create position values DataFrame
+        // Create position values DataFrame (reflects post-fee, post-rebalance state)
         let mut position_value_series = vec![date_series.clone().into()];
         for (asset, values) in position_values {
             position_value_series.push(Series::new((&*asset).into(), values).into());

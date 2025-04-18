@@ -39,31 +39,45 @@ Here's a simple example of how to use the backtester:
 import polars as pl
 from hawk_backtester import HawkBacktester
 
-# Load your price data with a timestamp column (YYYY-MM-DD format)
+# Load your price data with a date column (YYYY/MM/DD or YYYY-MM-DD format)
 # and columns for each asset's price
 prices_df = pl.read_csv("data/prices.csv")
 
-# Load your weight data with a timestamp column (YYYY-MM-DD format)
+# Load your weight data with a date column (YYYY/MM/DD or YYYY-MM-DD format)
 # and columns for each asset's weight
 weights_df = pl.read_csv("data/weights.csv")
 
 # Recommended data cleaning process
 ### For Prices, forward fill first to avoid look-ahead, then backfill missing data
+prices_df = prices_df.with_columns(pl.col("date").str.to_date("%Y-%m-%d")) # Ensure date type
+prices_df = prices_df.sort("date") # Sort by date
 prices_df = prices_df.fill_null(strategy="forward")
 prices_df = prices_df.fill_null(strategy="backward")
 ### For weights, drop null values or fill with 0.0, depending on the desired behavior.
+weights_df = weights_df.with_columns(pl.col("date").str.to_date("%Y-%m-%d")) # Ensure date type
+weights_df = weights_df.sort("date") # Sort by date
 weights_df = weights_df.drop_nulls()
 #  weights_df = weights_df.fill_null(0.0)
 
-# Initalize backtester, and run backtest
-backtester = HawkBacktester(initial_value=1)
+# Initialize backtester with initial value and optional trading fee (in basis points)
+# e.g., trading_fee_bps=10 means 0.10% fee per trade
+backtester = HawkBacktester(initial_value=1_000_000, trading_fee_bps=10)
 results = backtester.run(prices_df, weights_df)
 
 # Parse the result dictionary
+# results_df contains daily gross and net performance metrics
 results_df = results["backtest_results"]
+# metrics_df contains summary statistics (calculated on net returns)
 metrics_df = results["backtest_metrics"]
-cash_positions_df = results["backtest_positions"]
-position_weights_df = results["backtest_weights"]
+# positions_df contains daily dollar value allocations (post-rebalance, post-fee)
+positions_df = results["backtest_positions"]
+# weights_df contains daily percentage weight allocations (post-rebalance, post-fee)
+weights_df = results["backtest_weights"]
+
+print("Backtest Results:")
+print(results_df.head())
+print("\nBacktest Metrics:")
+print(metrics_df)
 ```
 
 ## Input Data Format
@@ -71,7 +85,7 @@ position_weights_df = results["backtest_weights"]
 ### Price Data
 
 The price DataFrame should have the following structure:
-- A `date` column with dates in YYYY-MM-DD format (e.g., "2023-01-01")
+- A `date` column with dates in YYYY-MM-DD or YYYY/MM/DD format (e.g., "2023-01-01")
 - One column per asset with the price at that timestamp
 
 Example:
@@ -85,8 +99,10 @@ date,AAPL,MSFT,GOOG,AMZN
 ### Weight Data
 
 The weight DataFrame should have the following structure:
-- A `date` column with dates in YYYY-MM-DD format (e.g., "2023-01-01")
-- One column per asset with the target weight at that timestamp (0.0 to 1.0)
+- A `date` column with dates in YYYY-MM-DD or YYYY/MM/DD format (e.g., "2023-01-01")
+- One column per asset with the target weight at that timestamp (e.g., 0.5 for 50%)
+- Weights can be positive (long) or negative (short).
+- The sum of absolute weights does not need to equal 1.0; any remainder implies a cash position (or leverage if sum > 1 or includes shorts).
 
 Example:
 ```
@@ -96,9 +112,51 @@ date,AAPL,MSFT,GOOG,AMZN
 ...
 ```
 
-Note: Both DataFrames must use the same date format (YYYY-MM-DD) and column name (`date`) for consistency.
+## Output Data Format
 
-To Publish the project (Developer)
+The `run` method returns a Python dictionary containing four Polars DataFrames:
+
+1.  `backtest_results`: Contains the daily performance time series.
+    - `date`: The timestamp for the row.
+    - `net_portfolio_value`: Total value of the portfolio after fees for the day.
+    - `net_daily_return`: Daily arithmetic return calculated on net values.
+    - `net_daily_log_return`: Daily log return calculated on net values.
+    - `net_cumulative_return`: Cumulative arithmetic return from the start date based on net values.
+    - `net_cumulative_log_return`: Cumulative log return from the start date based on net values.
+    - `net_drawdown`: Drawdown from the peak net portfolio value.
+    - `gross_portfolio_value`: Total value of the portfolio before fees for the day.
+    - `gross_daily_return`: Daily arithmetic return calculated on gross values.
+    - `gross_daily_log_return`: Daily log return calculated on gross values.
+    - `gross_cumulative_return`: Cumulative arithmetic return from the start date based on gross values.
+    - `gross_cumulative_log_return`: Cumulative log return from the start date based on gross values.
+    - `volume_traded`: Total absolute dollar value traded on that day due to rebalancing.
+
+2.  `backtest_positions`: Contains the daily dollar value allocation to each asset and cash (after rebalancing and fees).
+    - `date`: The timestamp for the row.
+    - One column per asset showing its dollar value.
+    - `cash`: The dollar value held in cash.
+
+3.  `backtest_weights`: Contains the daily percentage weight allocation to each asset and cash (after rebalancing and fees).
+    - `date`: The timestamp for the row.
+    - One column per asset showing its weight (allocation / net_portfolio_value).
+    - `cash`: The weight of cash.
+
+4.  `backtest_metrics`: Contains summary statistics calculated from the **net** performance.
+    - `metric`: Name of the performance or simulation metric.
+    - `value`: The calculated value of the metric.
+    - Key metrics include: `total_return`, `annualized_return`, `annualized_volatility`, `sharpe_ratio`, `sortino_ratio`, `max_drawdown`, `total_fees_paid`, `portfolio_turnover`, etc.
+
+## Trading Fees
+
+- Fees are specified in basis points (bps) via the `trading_fee_bps` parameter in the `HawkBacktester` constructor (e.g., `trading_fee_bps=10` for 0.10%).
+- Fees are calculated on the absolute dollar volume traded during each rebalancing event.
+- The fee amount is deducted directly from the portfolio's cash balance *before* the new target allocations are established.
+- All `net_*` performance metrics and the summary `backtest_metrics` reflect performance *after* fees have been deducted.
+- The `gross_*` performance metrics show the theoretical performance *before* fees.
+
+## Development
+
+To publish the project (Developer):
 ```bash
 PYPI_API_TOKEN="your-token-here"
 maturin publish --username __token__ --password $PYPI_API_TOKEN
