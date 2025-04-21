@@ -8,6 +8,7 @@ A high-performance portfolio backtesting system implemented in Rust with Python 
 - Python bindings using PyO3
 - Compatible with Polars DataFrames 
 - Support for date-based rebalancing events
+- [IN-PROGRESS] Percent of volume trading costs
 
 ## Installation
 
