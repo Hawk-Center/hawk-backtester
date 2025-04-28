@@ -81,6 +81,8 @@ mod tests {
             vec![250.0, 250.0, 250.0, 250.0], // volume traded each time
             1000.0,                           // total volume traded
             &vec![1000.0; 252],               // constant portfolio value of 1000.0
+            vec![0.0; 252],                   // daily slippage costs (assuming 0)
+            0.0,                              // cumulative slippage cost (assuming 0)
         );
 
         // For 1000 volume over 1 year with avg portfolio value of 1000,
@@ -107,6 +109,8 @@ mod tests {
             vec![500.0; 8],     // 500 volume each trade
             4000.0,             // total volume traded
             &vec![1000.0; 504], // constant portfolio value of 1000.0
+            vec![0.0; 504],     // daily slippage costs (assuming 0)
+            0.0,                // cumulative slippage cost (assuming 0)
         );
 
         // For 4000 volume over 2 years with avg portfolio value of 1000,
@@ -133,6 +137,8 @@ mod tests {
             vec![],             // no volume
             0.0,                // no total volume
             &vec![1000.0; 252], // constant portfolio value of 1000.0
+            vec![0.0; 252],     // daily slippage costs (assuming 0)
+            0.0,                // cumulative slippage cost (assuming 0)
         );
 
         assert_eq!(
@@ -153,6 +159,8 @@ mod tests {
             vec![100.0; 52],    // 100 volume each week
             5200.0,             // total volume traded
             &vec![1000.0; 252], // constant portfolio value of 1000.0
+            vec![0.0; 252],     // daily slippage costs (assuming 0)
+            0.0,                // cumulative slippage cost (assuming 0)
         );
 
         // For 5200 volume over 1 year with avg portfolio value of 1000,
@@ -184,6 +192,8 @@ mod tests {
             volume_trades.clone(),
             total_volume,
             &vec![1000.0; 252], // constant portfolio value
+            vec![0.0; 252],     // daily slippage costs (assuming 0)
+            0.0,                // cumulative slippage cost (assuming 0)
         );
 
         // Check individual trade volumes are preserved
@@ -217,6 +227,8 @@ mod tests {
             vec![100.0], // some volume
             100.0,       // total volume
             &vec![0.0],  // zero portfolio value
+            vec![0.0],   // daily slippage costs (assuming 0)
+            0.0,         // cumulative slippage cost (assuming 0)
         );
 
         assert_eq!(
@@ -237,6 +249,8 @@ mod tests {
             vec![],  // no volume
             0.0,     // no total volume
             &vec![], // no portfolio values
+            vec![],  // daily slippage costs
+            0.0,     // cumulative slippage cost
         );
 
         assert_eq!(

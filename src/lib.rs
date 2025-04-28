@@ -122,6 +122,7 @@ impl HawkBacktester {
         metrics_dict.set_item("cumulative_volume_traded", metrics.cumulative_volume_traded)?;
         metrics_dict.set_item("portfolio_turnover", metrics.portfolio_turnover)?;
         metrics_dict.set_item("holding_period_years", metrics.holding_period_years)?;
+        metrics_dict.set_item("cumulative_slippage_cost", metrics.cumulative_slippage_cost)?;
 
         // Simulation statistics
         metrics_dict.set_item("num_price_points", prices.len())?;

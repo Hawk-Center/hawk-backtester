@@ -98,6 +98,8 @@ impl<'a> Backtester<'a> {
         let mut drawdowns = Vec::new();
         let mut volume_traded = Vec::new();
         let mut cumulative_volume_traded = 0.0;
+        let mut daily_slippage_costs = Vec::new();
+        let mut cumulative_slippage_cost = 0.0;
 
         // Track position values and weights over time
         let mut position_values: HashMap<Arc<str>, Vec<f64>> = HashMap::new();
@@ -197,6 +199,7 @@ impl<'a> Backtester<'a> {
                 // --- End Trade Volume Calculation ---
 
                 cumulative_volume_traded += trade_volume;
+                cumulative_slippage_cost += total_slippage_cost;
 
                 portfolio.positions.clear();
                 let mut allocated_sum = 0.0;
@@ -226,8 +229,9 @@ impl<'a> Backtester<'a> {
                 num_trades += 1;
             }
 
-            // Record trade volume for this day (will be 0 if no rebalancing occurred)
+            // Record trade volume and slippage for this day
             volume_traded.push(trade_volume);
+            daily_slippage_costs.push(total_slippage_cost);
 
             // Compute current portfolio value.
             let current_value = portfolio.total_value();
@@ -322,6 +326,8 @@ impl<'a> Backtester<'a> {
             volume_traded.clone(),
             cumulative_volume_traded,
             &portfolio_values,
+            daily_slippage_costs.clone(),
+            cumulative_slippage_cost,
         );
 
         // Create the main performance DataFrame
@@ -334,6 +340,7 @@ impl<'a> Backtester<'a> {
             Series::new("cumulative_log_return".into(), cumulative_log_returns);
         let drawdown_series = Series::new("drawdown".into(), drawdowns);
         let volume_traded_series = Series::new("volume_traded".into(), volume_traded);
+        let daily_slippage_series = Series::new("daily_slippage_cost".into(), daily_slippage_costs);
 
         let performance_df = DataFrame::new(vec![
             date_series.clone().into(),
@@ -344,6 +351,7 @@ impl<'a> Backtester<'a> {
             cumulative_log_return_series.into(),
             drawdown_series.into(),
             volume_traded_series.into(),
+            daily_slippage_series.into(),
         ])?;
 
         // Create position values DataFrame

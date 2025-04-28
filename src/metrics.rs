@@ -17,10 +17,13 @@ pub struct BacktestMetrics {
     pub cumulative_volume_traded: f64, // Total volume traded across all rebalances
     pub portfolio_turnover: f64,       // Annual turnover rate (ABS DOLLAR VOLUME PER YEAR / 2xBOOK)
     pub holding_period_years: f64,     // Average holding period in years (1/turnover)
+    pub daily_slippage_costs: Vec<f64>, // Slippage cost incurred each day
+    pub cumulative_slippage_cost: f64, // Total slippage cost incurred
 }
 
 impl BacktestMetrics {
     /// Calculate performance metrics from a series of daily returns and drawdowns
+    #[allow(clippy::too_many_arguments)] // Allow more arguments for comprehensive metrics
     pub fn calculate(
         daily_returns: &[f64],
         drawdowns: &[f64],
@@ -29,6 +32,8 @@ impl BacktestMetrics {
         volume_traded: Vec<f64>,
         cumulative_volume_traded: f64,
         portfolio_values: &[f64], // Need portfolio values to calculate average portfolio size
+        daily_slippage_costs: Vec<f64>, // Added
+        cumulative_slippage_cost: f64, // Added
     ) -> Self {
         // Calculate total return (arithmetic return)
         let total_return = daily_returns.iter().fold(1.0, |acc, &r| acc * (1.0 + r)) - 1.0;
@@ -140,6 +145,8 @@ impl BacktestMetrics {
             cumulative_volume_traded,
             portfolio_turnover,
             holding_period_years,
+            daily_slippage_costs,
+            cumulative_slippage_cost,
         }
     }
 }

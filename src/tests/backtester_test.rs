@@ -283,6 +283,7 @@ fn test_dataframe_output() {
         "cumulative_log_return",
         "drawdown",
         "volume_traded",
+        "daily_slippage_cost",
     ];
     assert_eq!(df.get_column_names(), expected_cols);
     assert_eq!(df.height(), prices.len());
@@ -829,7 +830,7 @@ fn test_slippage_cost() {
         slippage_bps,
     };
 
-    let (df_results, df_positions, _df_weights, _metrics) =
+    let (df_results, df_positions, _df_weights, metrics) =
         backtester.run().expect("Backtest should run");
 
     // --- Expected Calculations ---
@@ -874,4 +875,23 @@ fn test_slippage_cost() {
         "Expected cash -1.0 on day 2, got {}", cash_day2
     );
 
+    // Check daily slippage cost column in results
+    let daily_slippage_series = df_results.column("daily_slippage_cost").unwrap();
+    let slippage_day1: f64 = daily_slippage_series.get(0).unwrap().try_extract().unwrap();
+    let slippage_day2: f64 = daily_slippage_series.get(1).unwrap().try_extract().unwrap();
+
+    assert!(
+        (slippage_day1 - 1.0).abs() < 1e-10,
+        "Expected daily slippage 1.0 on day 1, got {}", slippage_day1
+    );
+    assert!(
+        (slippage_day2 - 0.0).abs() < 1e-10,
+        "Expected daily slippage 0.0 on day 2, got {}", slippage_day2
+    );
+
+    // Check cumulative slippage cost in metrics
+    assert!(
+        (metrics.cumulative_slippage_cost - 1.0).abs() < 1e-10,
+        "Expected cumulative slippage 1.0, got {}", metrics.cumulative_slippage_cost
+    );
 }
