@@ -151,18 +151,22 @@ impl<'a> Backtester<'a> {
                 let event = &self.weight_events[weight_index];
                 let current_total = portfolio.total_value();
 
-                // Calculate volume traded as sum of absolute changes in positions
-
-                // Add volume from closing existing positions
+                // Loop 1: Iterate through currently held positions
                 for (asset, pos) in &portfolio.positions {
+                    // Get the target weight for this asset (0 if not in the new event)
                     let new_weight = event.weights.get(asset).copied().unwrap_or(0.0);
+                    // Calculate the target dollar allocation
                     let new_allocation = new_weight * current_total;
+                    // Add the absolute difference between the new and old allocation to the volume
                     trade_volume += (new_allocation - pos.allocated).abs();
                 }
 
-                // Add volume from opening new positions
+                // Loop 2: Iterate through the target weights in the new event
                 for (asset, &weight) in &event.weights {
+                    // Check if this asset was NOT in the existing portfolio positions
                     if !portfolio.positions.contains_key(asset) {
+                        // If it's a new asset, its previous allocation was 0.
+                        // The change is simply the new allocation value. Add its absolute value.
                         trade_volume += (weight * current_total).abs();
                     }
                 }
