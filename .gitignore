@@ -60,6 +60,6 @@ EOF
 .pytest_cache/
 
 # data directory
-data/
+# data/
 outputs/
 .envrc
