@@ -130,6 +130,7 @@ fn test_input_handler_weight_date_alignment() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: price_data[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
@@ -161,6 +162,7 @@ fn test_backtester_start_date_behavior() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -191,6 +193,7 @@ fn test_backtester_date_gaps() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -233,6 +236,7 @@ fn test_backtester_future_weights() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");

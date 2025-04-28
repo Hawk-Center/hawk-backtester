@@ -17,16 +17,20 @@ use input_handler::{parse_price_df, parse_weights_df};
 struct HawkBacktester {
     initial_value: Option<f64>,
     start_date: Option<Date>,
+    slippage_bps: Option<f64>,
 }
 
 #[pymethods]
 impl HawkBacktester {
     /// Create a new backtester with a specified initial portfolio value
+    /// and optional slippage cost in basis points.
     #[new]
-    fn new(initial_value: Option<f64>) -> Self {
+    #[pyo3(signature = (initial_value=None, slippage_bps=None))]
+    fn new(initial_value: Option<f64>, slippage_bps: Option<f64>) -> Self {
         HawkBacktester {
             initial_value,
             start_date: None,
+            slippage_bps: slippage_bps.map(|bps| bps.max(0.0)),
         }
     }
 
@@ -72,7 +76,14 @@ impl HawkBacktester {
 
         // Use default values if not provided
         let initial_value = self.initial_value.unwrap_or(1_000_000.0);
-        let start_date = self.start_date.unwrap_or(weight_events[0].timestamp);
+        let start_date = self.start_date.unwrap_or_else(|| {
+            if weight_events.is_empty() {
+                panic!("Cannot determine start date without weight events.");
+            } else {
+                weight_events[0].timestamp
+            }
+        });
+        let slippage_bps = self.slippage_bps.unwrap_or(0.0);
 
         let simulation_start = Instant::now();
         // Create and run the backtester
@@ -81,6 +92,7 @@ impl HawkBacktester {
             weight_events: &weight_events,
             initial_value,
             start_date,
+            slippage_bps,
         };
 
         // Run the backtest and convert the result back to a Polars DataFrame

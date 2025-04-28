@@ -1,6 +1,6 @@
 use crate::metrics::BacktestMetrics;
 use polars::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use time::Date;
 
@@ -70,6 +70,8 @@ pub struct Backtester<'a> {
     /// The initial value of the portfolio.
     pub initial_value: f64,
     pub start_date: Date,
+    /// Slippage cost in basis points (e.g., 5 means 0.05%).
+    pub slippage_bps: f64,
 }
 
 impl<'a> Backtester<'a> {
@@ -143,6 +145,7 @@ impl<'a> Backtester<'a> {
             portfolio.update_positions(&price_data.prices);
 
             let mut trade_volume = 0.0; // Initialize trade volume for this day
+            let mut total_slippage_cost = 0.0; // Initialize slippage cost for this day
 
             // If a new weight event is due (check is now simpler as we pre-advanced weight_index)
             if weight_index < n_events
@@ -151,6 +154,27 @@ impl<'a> Backtester<'a> {
                 let event = &self.weight_events[weight_index];
                 let current_total = portfolio.total_value();
 
+                // --- Calculate Slippage Cost ---
+                if self.slippage_bps > 0.0 && current_total > 0.0 {
+                    let mut all_assets: HashSet<Arc<str>> = HashSet::new();
+                    all_assets.extend(portfolio.positions.keys().cloned());
+                    all_assets.extend(event.weights.keys().cloned());
+
+                    for asset in all_assets {
+                        let current_allocation = portfolio
+                            .positions
+                            .get(&asset)
+                            .map(|pos| pos.allocated)
+                            .unwrap_or(0.0);
+                        let target_weight = event.weights.get(&asset).copied().unwrap_or(0.0);
+                        let target_allocation = target_weight * current_total;
+                        let delta = target_allocation - current_allocation;
+                        total_slippage_cost += delta.abs() * (self.slippage_bps / 10000.0);
+                    }
+                }
+                // --- End Slippage Cost Calculation ---
+
+                // --- Calculate Trade Volume ---
                 // Loop 1: Iterate through currently held positions
                 for (asset, pos) in &portfolio.positions {
                     // Get the target weight for this asset (0 if not in the new event)
@@ -170,6 +194,7 @@ impl<'a> Backtester<'a> {
                         trade_volume += (weight * current_total).abs();
                     }
                 }
+                // --- End Trade Volume Calculation ---
 
                 cumulative_volume_traded += trade_volume;
 
@@ -192,6 +217,11 @@ impl<'a> Backtester<'a> {
                 }
                 // Hold the remainder in cash.
                 portfolio.cash = current_total * (1.0 - allocated_sum);
+
+                // --- Apply Slippage Cost ---
+                portfolio.cash -= total_slippage_cost;
+                // --- End Apply Slippage Cost ---
+
                 weight_index += 1;
                 num_trades += 1;
             }

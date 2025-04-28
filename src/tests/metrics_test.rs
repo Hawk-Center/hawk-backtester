@@ -49,6 +49,7 @@ fn test_drawdown_calculation() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");

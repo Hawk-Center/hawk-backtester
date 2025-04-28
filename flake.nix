@@ -23,6 +23,13 @@
           # C Compiler (Linker)
           gcc 
 
+          # C++ Standard Library (Runtime for pyarrow etc.)
+          stdenv.cc.cc.lib
+
+          # Python Environment Management
+          poetry
+          python311
+          maturin
           # Often needed for Rust crates interacting with C libs
           pkg-config 
           openssl 

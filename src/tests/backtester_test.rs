@@ -87,6 +87,7 @@ fn test_backtester_no_weight_event() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -160,6 +161,7 @@ fn test_backtester_with_weight_event() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: pd1.timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
@@ -227,6 +229,7 @@ fn test_multiple_weight_events() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: pd1.timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
@@ -265,6 +268,7 @@ fn test_dataframe_output() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
@@ -363,6 +367,7 @@ fn test_backtester_with_zero_initial_value() {
         weight_events: &weight_events,
         initial_value: 0.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -420,6 +425,7 @@ fn test_backtester_with_missing_prices() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: pd1.timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -456,6 +462,7 @@ fn test_weight_event_with_invalid_asset() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -528,6 +535,7 @@ fn test_weight_allocation_bounds() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -557,6 +565,7 @@ fn test_short_position_returns() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -644,6 +653,7 @@ fn test_mixed_long_short_portfolio() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -695,6 +705,7 @@ fn test_backtester_respects_start_date() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: start.date(),
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -748,6 +759,7 @@ fn test_volume_traded() {
         weight_events: &weight_events,
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
     };
 
     let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -790,4 +802,76 @@ fn test_volume_traded() {
         metrics.volume_traded.iter().sum::<f64>(),
         "Cumulative volume should equal sum of daily volumes"
     );
+}
+
+#[test]
+fn test_slippage_cost() {
+    let now = OffsetDateTime::now_utc();
+
+    // Stable prices for asset A
+    let prices = vec![
+        make_price_data(now, vec![("A", 10.0)]),
+        make_price_data(now + Duration::days(1), vec![("A", 10.0)]),
+    ];
+
+    // Weight event to allocate 100% to A on day 1
+    let weight_events = vec![make_weight_event(now, vec![("A", 1.0)])];
+
+    // Initial value and 10 bps slippage
+    let initial_value = 1000.0;
+    let slippage_bps = 10.0; // 0.10%
+
+    let backtester = Backtester {
+        prices: &prices,
+        weight_events: &weight_events,
+        initial_value,
+        start_date: prices[0].timestamp,
+        slippage_bps,
+    };
+
+    let (df_results, df_positions, _df_weights, _metrics) =
+        backtester.run().expect("Backtest should run");
+
+    // --- Expected Calculations ---
+    // Day 1: Rebalance from 100% cash to 100% A
+    // Trade volume = abs(1000 - 0) = 1000
+    // Slippage cost = 1000 * (10 / 10000) = 1000 * 0.001 = 1.0
+    // Initial allocation: A = 1000, Cash = 0
+    // After slippage: A = 1000, Cash = 0 - 1.0 = -1.0
+    // Total Value Day 1 = 1000 - 1.0 = 999.0
+
+    // Day 2: No rebalance, price stable
+    // A = 1000, Cash = -1.0
+    // Total Value Day 2 = 999.0
+    // --- End Expected Calculations ---
+
+    // Check portfolio value after slippage deduction
+    let pv_series = df_results.column("portfolio_value").unwrap();
+    let value_day1: f64 = pv_series.get(0).unwrap().try_extract().unwrap();
+    let value_day2: f64 = pv_series.get(1).unwrap().try_extract().unwrap();
+
+    assert!(
+        (value_day1 - 999.0).abs() < 1e-10,
+        "Expected portfolio value 999.0 on day 1, got {}", value_day1
+    );
+     assert!(
+        (value_day2 - 999.0).abs() < 1e-10,
+        "Expected portfolio value 999.0 on day 2, got {}", value_day2
+    );
+
+
+    // Check cash position after slippage deduction
+    let cash_series = df_positions.column("cash").unwrap();
+    let cash_day1: f64 = cash_series.get(0).unwrap().try_extract().unwrap();
+    let cash_day2: f64 = cash_series.get(1).unwrap().try_extract().unwrap();
+
+    assert!(
+        (cash_day1 - (-1.0)).abs() < 1e-10,
+        "Expected cash -1.0 on day 1, got {}", cash_day1
+    );
+     assert!(
+        (cash_day2 - (-1.0)).abs() < 1e-10,
+        "Expected cash -1.0 on day 2, got {}", cash_day2
+    );
+
 }
