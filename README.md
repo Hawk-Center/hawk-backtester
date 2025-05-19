@@ -56,8 +56,8 @@ prices_df = prices_df.fill_null(strategy="backward")
 weights_df = weights_df.drop_nulls()
 #  weights_df = weights_df.fill_null(0.0)
 
-# Initalize backtester, and run backtest
-backtester = HawkBacktester(initial_value=1)
+# Initalize backtester with optional slippage costs (in basis points)
+backtester = HawkBacktester(initial_value=1_000_000, slippage_bps=1.0)
 results = backtester.run(prices_df, weights_df)
 
 # Parse the result dictionary
@@ -88,6 +88,7 @@ date,AAPL,MSFT,GOOG,AMZN
 The weight DataFrame should have the following structure:
 - A `date` column with dates in YYYY-MM-DD format (e.g., "2023-01-01")
 - One column per asset with the target weight at that timestamp (0.0 to 1.0)
+- Use negative weights for short positions (e.g., -0.3 for a 30% short position)
 
 Example:
 ```
