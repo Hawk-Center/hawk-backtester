@@ -63,3 +63,7 @@ EOF
 # data/
 outputs/
 .envrc
+
+backtest_metrics.csv
+backtest_results.csv
+
