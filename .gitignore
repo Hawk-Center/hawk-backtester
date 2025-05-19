@@ -66,4 +66,4 @@ outputs/
 
 backtest_metrics.csv
 backtest_results.csv
-
+.direnv/
