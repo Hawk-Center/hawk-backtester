@@ -8,7 +8,7 @@ A high-performance portfolio backtesting system implemented in Rust with Python 
 - Python bindings using PyO3
 - Compatible with Polars DataFrames 
 - Support for date-based rebalancing events
-- Percent of volume slippage trading costs (in bps)
+- Percent of volume slippage trading costs (in bps, 100bps == 1.0%)
 
 ## Installation
 
