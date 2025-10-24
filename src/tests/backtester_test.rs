@@ -1,5 +1,4 @@
 use crate::backtester::{Backtester, DollarPosition, PortfolioState, PriceData, WeightEvent};
-use crate::input_handler::{parse_price_df, parse_weights_df};
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -90,7 +89,7 @@ fn test_backtester_no_weight_event() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Test main results DataFrame
     let pv_series = df.column("portfolio_value").unwrap();
@@ -164,7 +163,7 @@ fn test_backtester_with_weight_event() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
 
     // Test main results
     let pv_series = df.column("portfolio_value").unwrap();
@@ -232,7 +231,7 @@ fn test_multiple_weight_events() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
 
     // Test final portfolio value
     let pv_series = df.column("portfolio_value").unwrap();
@@ -371,7 +370,7 @@ fn test_backtester_with_zero_initial_value() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Check main results are zero
     let pv_series = df.column("portfolio_value").unwrap();
@@ -429,7 +428,7 @@ fn test_backtester_with_missing_prices() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
     assert_eq!(df.height(), 3);
     assert_eq!(positions_df.height(), 3);
     assert_eq!(weights_df.height(), 3);
@@ -466,7 +465,7 @@ fn test_weight_event_with_invalid_asset() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (_df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Check that both assets are tracked even though B has no prices
     assert!(positions_df
@@ -539,10 +538,10 @@ fn test_weight_allocation_bounds() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (results_df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Even with weight > 1, the portfolio should still function
-    let pv_series = df.column("portfolio_value").unwrap();
+    let pv_series = results_df.column("portfolio_value").unwrap();
     let initial_value: f64 = pv_series.get(0).unwrap().extract().unwrap();
     assert!((initial_value - 1000.0).abs() < 1e-10);
 }
@@ -569,12 +568,12 @@ fn test_short_position_returns() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (results_df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Get the portfolio values
-    let pv_series = df.column("portfolio_value").unwrap();
-    let daily_series = df.column("daily_return").unwrap();
-    let cum_series = df.column("cumulative_return").unwrap();
+    let pv_series = results_df.column("portfolio_value").unwrap();
+    let daily_series = results_df.column("daily_return").unwrap();
+    let cum_series = results_df.column("cumulative_return").unwrap();
 
     // Day 1: Short position should gain when price falls 10%
     // Initial short position: -500 (50% of 1000)
@@ -657,11 +656,11 @@ fn test_mixed_long_short_portfolio() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (results_df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Get the portfolio value and returns
-    let pv_series = df.column("portfolio_value").unwrap();
-    let cum_series = df.column("cumulative_return").unwrap();
+    let pv_series = results_df.column("portfolio_value").unwrap();
+    let cum_series = results_df.column("cumulative_return").unwrap();
 
     // Calculate expected return:
     // LONG position (50%): +10% * 0.5 = +5%
@@ -709,7 +708,7 @@ fn test_backtester_respects_start_date() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Verify we only get data from the start date onwards for all DataFrames
     assert_eq!(df.height(), 3); // Only dates >= start_date
@@ -763,10 +762,10 @@ fn test_volume_traded() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (results_df, _positions_df, _weights_df, metrics) = backtester.run().expect("Backtest should run");
 
     // Get volume traded series
-    let volume_series = df.column("volume_traded").unwrap();
+    let volume_series = results_df.column("volume_traded").unwrap();
 
     // First day should have initial allocation volume
     let day1_volume: f64 = volume_series.get(0).unwrap().try_extract().unwrap();
@@ -830,7 +829,7 @@ fn test_slippage_cost() {
         slippage_bps,
     };
 
-    let (df_results, df_positions, _df_weights, metrics) =
+    let (results_df, positions_df, _weights_df, metrics) =
         backtester.run().expect("Backtest should run");
 
     // --- Expected Calculations ---
@@ -847,7 +846,7 @@ fn test_slippage_cost() {
     // --- End Expected Calculations ---
 
     // Check portfolio value after slippage deduction
-    let pv_series = df_results.column("portfolio_value").unwrap();
+    let pv_series = results_df.column("portfolio_value").unwrap();
     let value_day1: f64 = pv_series.get(0).unwrap().try_extract().unwrap();
     let value_day2: f64 = pv_series.get(1).unwrap().try_extract().unwrap();
 
@@ -862,7 +861,7 @@ fn test_slippage_cost() {
 
 
     // Check cash position after slippage deduction
-    let cash_series = df_positions.column("cash").unwrap();
+    let cash_series = positions_df.column("cash").unwrap();
     let cash_day1: f64 = cash_series.get(0).unwrap().try_extract().unwrap();
     let cash_day2: f64 = cash_series.get(1).unwrap().try_extract().unwrap();
 
@@ -876,7 +875,7 @@ fn test_slippage_cost() {
     );
 
     // Check daily slippage cost column in results
-    let daily_slippage_series = df_results.column("daily_slippage_cost").unwrap();
+    let daily_slippage_series = results_df.column("daily_slippage_cost").unwrap();
     let slippage_day1: f64 = daily_slippage_series.get(0).unwrap().try_extract().unwrap();
     let slippage_day2: f64 = daily_slippage_series.get(1).unwrap().try_extract().unwrap();
 

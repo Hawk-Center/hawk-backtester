@@ -87,9 +87,15 @@ let backtester = Backtester {
     weight_events: &weight_events,
     initial_value: 1000.0,
     start_date: price_data[0].timestamp,  // Specify simulation start date
+    slippage_bps: 0.5,                    // Optional transaction cost model
 };
 
-let (results_df, metrics) = backtester.run()?;
+let (
+    performance_df,
+    position_values_df,
+    position_weights_df,
+    metrics,
+) = backtester.run()?;
 ```
 
 ### Input Requirements
@@ -138,34 +144,51 @@ Both formats support flexible padding:
 
 The backtester returns a tuple containing:
 
-1. **DataFrame with columns:**
+1. **Performance DataFrame with columns:**
    - `date`: Timestamp in ISO 8601 format (YYYY-MM-DD)
    - `portfolio_value`: Total portfolio value
-   - `daily_return`: Daily percentage return
-   - `cumulative_return`: Cumulative return since inception
+   - `daily_return`: Daily arithmetic percentage return
+   - `daily_log_return`: Daily log return
+   - `cumulative_return`: Cumulative arithmetic return since inception
+   - `cumulative_log_return`: Cumulative log return since inception
    - `drawdown`: Current drawdown from peak
+   - `volume_traded`: Absolute dollar volume traded on the rebalance day
+   - `daily_slippage_cost`: Slippage cost incurred on the day
 
-2. **Metrics including:**
+2. **Position Values DataFrame:** Dollar allocations for each asset and cash over time.
+
+3. **Position Weights DataFrame:** Portfolio weights for each asset and cash over time.
+
+4. **Metrics including:**
    - Total return
+   - Log return
    - Annualized return
-   - Volatility
+   - Annualized volatility
    - Sharpe ratio
+   - Sortino ratio
    - Maximum drawdown
+   - Average drawdown
+   - Average daily return
+   - Win rate
+   - Number of trades
+   - Volume traded per rebalance
+   - Cumulative volume traded
+   - Portfolio turnover
+   - Holding period (years)
+   - Daily slippage costs
+   - Cumulative slippage cost
 
 ## Error Handling
 
-The backtester handles several edge cases:
+The current implementation leans on a few guardrails while still leaving some gaps contributors should be aware of:
 
 1. **Missing Prices:**
-   - Maintains previous position values
-   - Logs warning if critical prices are missing
+   - Keeps the most recent known price for the asset.
+   - Does **not** emit a warning or error when data is missing; consumers must inspect their data upstream if silent gaps are a concern.
 
 2. **Invalid Weights:**
-   - Validates weights must be between -1.0 and 1.0
-   - Returns error for any weight outside valid range
-   - For sum of absolute weights > 1.0:
-     - Returns error to prevent excessive leverage
-   - Missing weights are treated as 0.0
+   - Enforces per-asset weight bounds of `[-1.0, 1.0]` and rejects null weight entries during validation.
+   - Does **not** enforce a leverage cap on the aggregate portfolio (e.g., the sum of absolute weights may exceed 1.0 without triggering an error).
 
 3. **Zero Values:**
    - Properly handles zero initial value
@@ -176,6 +199,8 @@ The backtester handles several edge cases:
    - Validates date formats strictly
    - Rejects invalid dates (e.g., "2023-13-01")
    - Handles date gaps appropriately
+
+> **TODO:** Add explicit logging for missing-price scenarios and introduce leverage-limit checks so misconfigured portfolios fail fast.
 
 ## Performance Considerations
 

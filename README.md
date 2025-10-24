@@ -87,7 +87,7 @@ date,AAPL,MSFT,GOOG,AMZN
 
 The weight DataFrame should have the following structure:
 - A `date` column with dates in YYYY-MM-DD format (e.g., "2023-01-01")
-- One column per asset with the target weight at that timestamp (0.0 to 1.0)
+- One column per asset with the target weight at that timestamp (values must be within [-1.0, 1.0])
 - Use negative weights for short positions (e.g., -0.3 for a 30% short position)
 
 Example:

@@ -1,8 +1,5 @@
-use crate::backtester::{Backtester, DollarPosition, PortfolioState, PriceData, WeightEvent};
-use crate::input_handler::{parse_price_df, parse_weights_df};
+use crate::backtester::{Backtester, PriceData, WeightEvent};
 use crate::metrics::BacktestMetrics;
-use polars::prelude::*;
-use std::collections::HashMap;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 
@@ -52,7 +49,7 @@ fn test_drawdown_calculation() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     let drawdown_series = df.column("drawdown").unwrap();
 

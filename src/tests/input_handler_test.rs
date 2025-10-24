@@ -1,7 +1,6 @@
-use crate::backtester::{Backtester, DollarPosition, PortfolioState, PriceData, WeightEvent};
+use crate::backtester::{Backtester, PriceData, WeightEvent};
 use crate::input_handler::{parse_price_df, parse_weights_df};
 use polars::prelude::*;
-use std::collections::HashMap;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 
@@ -133,7 +132,7 @@ fn test_input_handler_weight_date_alignment() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
+    let (df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest failed");
 
     // Verify we get results for all dates, not just the weight event date
     assert_eq!(df.height(), 3);
@@ -165,7 +164,7 @@ fn test_backtester_start_date_behavior() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Currently, the backtester processes all dates
     // This test reveals we might want to add start_date parameter
@@ -196,7 +195,7 @@ fn test_backtester_date_gaps() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Verify we only get entries for days with price data
     assert_eq!(df.height(), 3);
@@ -239,7 +238,7 @@ fn test_backtester_future_weights() {
         slippage_bps: 0.0,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Verify we only process up to last price data point
     assert_eq!(df.height(), 3);

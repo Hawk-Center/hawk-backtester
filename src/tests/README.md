@@ -153,15 +153,14 @@ Tests handling of incomplete price data.
 
 #### `test_weight_event_with_invalid_asset`
 Tests handling of invalid assets in weight events.
-- Includes non-existent asset in weight event
-- Verifies backtester handles invalid asset gracefully
-- Ensures portfolio value reflects only valid allocations
+- Includes a weight event referencing an asset with no price data
+- Verifies the backtester still tracks the asset in the positions and weights outputs so
+  the discrepancy is visible to the caller
 
 #### `test_multiple_weight_events_same_day`
-Tests handling of multiple weight events on same day.
-- Creates two weight events for same timestamp
-- Verifies last weight event takes precedence
-- Validates resulting portfolio values
+Multiple weight events on the same trading day are **not supported**. The original test has
+been removed/commented out to make this limitation explicit—only a single weight event
+should be supplied per date.
 
 #### `test_drawdown_calculation`
 Tests drawdown calculation accuracy.
@@ -183,17 +182,21 @@ Tests structure and content of output DataFrame.
   - date
   - portfolio_value
   - daily_return
+  - daily_log_return
   - cumulative_return
+  - cumulative_log_return
   - drawdown
-- Ensures correct number of rows
+  - volume_traded
+  - daily_slippage_cost
+- Ensures correct number of rows and that the accompanying positions/weights DataFrames
+  only contain tracked assets (cash plus any assets referenced by weight events)
 
 ### Input Handler Tests
 
 #### `test_input_handler_date_ordering`
-Tests preservation of date order in input data.
+Tests enforced ascending order of dates in input data.
 - Creates DataFrame with unordered dates
-- Verifies dates are preserved in original order
-- Ensures no automatic sorting is applied
+- Verifies the parser sorts dates from earliest to latest and realigns their price data
 
 #### `test_input_handler_date_format`
 Tests handling of various date format inputs.
@@ -205,8 +208,9 @@ Tests handling of various date format inputs.
 
 #### `test_input_handler_invalid_dates`
 Tests rejection of invalid date formats.
-- Attempts to parse ISO format dates (unsupported)
-- Verifies appropriate error is returned
+- Confirms ISO (`YYYY-MM-DD`) and slash-separated (`YYYY/M/D`) styles parse successfully
+- Verifies other separators and non-ISO orders (e.g., `YYYY.MM.DD`, `MM-DD-YYYY`) raise
+  errors
 
 #### `test_input_handler_weight_date_alignment`
 Tests alignment of price and weight data dates.
