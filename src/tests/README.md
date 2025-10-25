@@ -213,8 +213,70 @@ Tests structure and content of output DataFrame.
   - drawdown
   - volume_traded
   - daily_slippage_cost
+  - daily_commission_cost
 - Ensures correct number of rows and that the accompanying positions/weights DataFrames
   only contain tracked assets (cash plus any assets referenced by weight events)
+
+### Commission and Fee Model Tests
+
+#### `test_ibkr_commission_minimum`
+Tests minimum commission enforcement for IBKR Pro Fixed model.
+- Tests small trade resulting in less than $1.00 base commission
+- Verifies minimum commission of $1.00 is applied
+- Uses 1% allocation to SPY at $100/share ($100 trade value)
+
+#### `test_ibkr_commission_standard_rate`
+Tests standard commission rate calculation.
+- Tests trade where commission falls between minimum and maximum
+- Verifies $0.005 per share rate is applied correctly
+- Uses 10% allocation resulting in $1,000 trade value
+
+#### `test_ibkr_commission_maximum_cap`
+Tests maximum commission cap of 1% of trade value.
+- Tests very low-priced stock where per-share commission would exceed 1%
+- Verifies commission is capped at 1% of trade value
+- Uses $0.10/share stock with large allocation
+
+#### `test_ibkr_commission_multiple_trades`
+Tests commission calculation across multiple trades.
+- Simulates portfolio with multiple rebalancing events
+- Verifies cumulative commission is sum of individual trade commissions
+- Tests that each trade is charged separately
+
+#### `test_ibkr_commission_with_rebalancing`
+Tests commission calculation during portfolio rebalancing.
+- Tests commission when changing from one position to another
+- Verifies both opening and closing trades incur commissions
+- Simulates realistic rebalancing scenario
+
+#### `test_no_commission_without_fee_model`
+Tests that no commission is applied when fee model is not specified.
+- Verifies commission cost remains zero when `fee_model` is `None`
+- Ensures backward compatibility with existing code
+
+#### `test_commission_and_slippage_together`
+Tests interaction of commission and slippage costs.
+- Verifies both costs are applied independently
+- Confirms total trading costs include both commission and slippage
+- Tests that both costs reduce portfolio value correctly
+
+#### `test_commission_reduces_portfolio_value`
+Tests that commission costs are properly deducted from portfolio.
+- Compares portfolio value with and without commissions
+- Verifies commission reduces final portfolio value
+- Confirms commission is subtracted from cash balance
+
+#### `test_commission_on_short_positions`
+Tests commission calculation for short positions.
+- Verifies commission is calculated on absolute trade value
+- Tests that short positions (negative weights) incur commissions
+- Confirms commission formula works for both long and short trades
+
+#### `test_commission_dataframe_column`
+Tests that commission costs appear in output DataFrame.
+- Verifies `daily_commission_cost` column exists in results
+- Confirms commission values are recorded on rebalance days
+- Tests that commission is zero on non-rebalance days
 
 ### Input Handler Tests
 
@@ -275,14 +337,18 @@ Tests handling of weight events beyond available price data.
 The test suite covers:
 - Basic portfolio operations
 - Price updates and rebalancing
-- Edge cases (zero values, missing data)
+- Edge cases (zero values, missing data, extreme leverage)
 - Error conditions
 - Data structure validation
 - Metric calculations
+- Transaction costs (slippage and commissions)
+- Commission models (IBKR Pro Fixed)
 - Date handling and formatting
 - Input data validation and processing
 - Date boundaries and gaps
 - Future event handling
+- Long and short positions
+- Leveraged portfolios
 
 ## Future Test Considerations
 
@@ -291,9 +357,14 @@ Potential areas for additional testing:
 2. Complex rebalancing scenarios
 3. Additional edge cases in price movements
 4. Stress testing with extreme market conditions
-5. Testing of all performance metrics
+5. Testing of all performance metrics in detail
 6. Additional date format variations
 7. Cross-timezone date handling
 8. Invalid weight format handling
 9. Date interpolation strategies
 10. Custom start/end date handling
+11. Additional commission models (tiered, percentage-based)
+12. Borrowing costs for short positions
+13. Margin requirements and margin calls
+14. Tax-lot accounting
+15. Partial fills and order execution modeling
