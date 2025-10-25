@@ -35,7 +35,12 @@
           openssl 
         ];
 
-        # Optional: Set environment variables if needed
+        # Set environment variables
+        shellHook = ''
+          export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [
+            pkgs.stdenv.cc.cc.lib
+          ]}:$LD_LIBRARY_PATH"
+        '';
         # RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
       };
     };

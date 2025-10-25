@@ -18,7 +18,7 @@ A high-performance portfolio backtesting system implemented in Rust with Python 
 pip install hawk_backtester
 ```
 
-### From source
+### From source (Standard)
 
 ```bash
 # Clone the repository
@@ -30,6 +30,46 @@ pip install maturin
 
 # Build and install the package
 maturin develop
+```
+
+### Development Setup (NixOS with Poetry)
+
+If you're using the nix flake development environment, this is a **one-time setup**:
+
+```bash
+# 1. Enter the nix devshell (provides Python 3.11, Rust, maturin, etc.)
+nix develop
+
+# 2. Configure poetry to use the nix-provided Python 3.11
+poetry env use python3.11
+
+# 3. Install Python dependencies
+poetry install
+
+# 4. Build the Rust extension and install in development mode
+poetry run maturin develop
+
+# 5. (If needed) Install pyarrow manually
+poetry run pip install pyarrow
+```
+
+After setup, run Python code with:
+```bash
+nix develop -c poetry run python your_script.py
+```
+
+**Note:** Poetry must be configured with `virtualenvs.create = true` (check with `poetry config --list`). If it's set to `false`, run:
+```bash
+poetry config virtualenvs.create true
+```
+
+**Troubleshooting:**
+- If `pyarrow` is missing, install it manually: `nix develop -c poetry run pip install pyarrow`
+- The nix flake automatically sets `LD_LIBRARY_PATH` for C++ libraries needed by pyarrow
+
+**Quick rebuild after code changes:**
+```bash
+nix develop -c poetry run maturin develop
 ```
 
 ## Usage
@@ -87,7 +127,7 @@ date,AAPL,MSFT,GOOG,AMZN
 
 The weight DataFrame should have the following structure:
 - A `date` column with dates in YYYY-MM-DD format (e.g., "2023-01-01")
-- One column per asset with the target weight at that timestamp (values must be within [-1.0, 1.0])
+- One column per asset with the target weight at that timestamp (values can be outside [-1.0, 1.0] for leveraged positions)
 - Use negative weights for short positions (e.g., -0.3 for a 30% short position)
 
 Example:

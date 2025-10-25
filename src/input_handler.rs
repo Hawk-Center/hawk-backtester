@@ -93,13 +93,7 @@ fn validate_weights_df(df: &DataFrame) -> Result<(), PolarsError> {
                 ));
             }
 
-            // Check weight values are between -1 and 1
-            let values: Vec<f64> = col.f64()?.into_iter().map(|v| v.unwrap_or(0.0)).collect();
-            if values.iter().any(|&w| w < -1.0 || w > 1.0) {
-                return Err(PolarsError::ComputeError(
-                    format!("Weights in column {} must be between -1 and 1", col_name).into(),
-                ));
-            }
+            // Weight values are no longer restricted to [-1, 1] range to allow leveraged portfolios
         }
     }
 

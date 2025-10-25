@@ -168,11 +168,36 @@ Tests drawdown calculation accuracy.
 - Verifies maximum drawdown calculation
 - Tests full cycle: initial → peak → drawdown → recovery
 
-#### `test_weight_allocation_bounds`
-Tests handling of invalid weight allocations.
-- Tests weights summing to more than 1.0
-- Verifies backtester continues to function
-- Ensures portfolio value calculations remain valid
+#### `test_leveraged_positions`
+Tests handling of leveraged positions (weights > 1.0).
+- Tests leveraged positions with weights > 1.0
+- Verifies backtester handles leverage correctly
+- Ensures portfolio value and position calculations remain valid
+- Confirms negative cash balance is correctly calculated
+
+#### `test_single_asset_high_leverage_negative_cash`
+Tests high leverage scenarios with single asset positions.
+- Tests 200% leverage (weight = 2.0) resulting in negative cash
+- Verifies position sizing and cash balance calculations
+- Ensures portfolio value remains consistent (position + cash = initial value)
+
+#### `test_multiple_assets_combined_leverage_negative_cash`
+Tests leverage across multiple assets.
+- Tests combined leverage > 100% across multiple positions (0.8 + 0.7 = 1.5)
+- Verifies individual position sizing and combined negative cash balance
+- Confirms total portfolio value calculations are correct
+
+#### `test_mixed_long_short_leveraged_positions`
+Tests leveraged portfolios with mixed long and short positions.
+- Tests net leverage > 100% (1.5 long, -0.2 short = 1.3 net)
+- Verifies position sizing for both long and short leveraged positions
+- Confirms negative cash balance calculation with mixed positions
+
+#### `test_extreme_leverage_negative_cash`
+Tests extreme leverage scenarios.
+- Tests 500% leverage (weight = 5.0) for stress testing
+- Verifies extreme position sizing and highly negative cash balances
+- Ensures system stability under extreme leverage conditions
 
 ### DataFrame Output
 

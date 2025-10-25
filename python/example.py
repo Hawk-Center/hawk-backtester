@@ -3,76 +3,9 @@ Example usage of the Hawk Backtester from Python.
 """
 
 import polars as pl
+import hawk_backtester
 from hawk_backtester import HawkBacktester
 
-
-def test_mrugank_file():
-    df = pl.read_csv(
-        "data/processed_merged_backtester_input.csv", infer_schema_length=1000
-    )
-    # Convert date column to YYYY-MM-DD format
-    df = df.with_columns(
-        pl.col("date")
-        .str.strptime(pl.Date, "%Y-%m-%d %H:%M:%S")
-        .dt.strftime("%Y-%m-%d")
-    )
-    print(df)
-
-    prices_df = df.select(
-        [
-            "date",
-            "SLV_adjClose",
-            "SPY_adjClose",
-            "GLD_adjClose",
-            "TLT_adjClose",
-            "USO_adjClose",
-            "UNG_adjClose",
-        ]
-    )
-    # Rename price columns to match the asset names expected by the backtester
-    prices_df = prices_df.rename(
-        {
-            "SLV_adjClose": "SLV",
-            "SPY_adjClose": "SPY",
-            "GLD_adjClose": "GLD",
-            "TLT_adjClose": "TLT",
-            "USO_adjClose": "USO",
-            "UNG_adjClose": "UNG",
-        }
-    )
-    prices_df = prices_df.fill_null(strategy="forward")
-    prices_df = prices_df.fill_null(strategy="backward")
-
-    weights_df = df.select(
-        [
-            "date",
-            "SLV_wgt",
-            "SPY_wgt",
-            "GLD_wgt",
-            "TLT_wgt",
-            "USO_wgt",
-            "UNG_wgt",
-        ]
-    )
-    # Rename weight columns to match the asset names expected by the backtester
-    weights_df = weights_df.rename(
-        {
-            "SLV_wgt": "SLV",
-            "SPY_wgt": "SPY",
-            "GLD_wgt": "GLD",
-            "TLT_wgt": "TLT",
-            "USO_wgt": "USO",
-            "UNG_wgt": "UNG",
-        }
-    )
-    # Drop Nulls
-    # Drop rows with null values in the weights dataframe
-    print(weights_df)
-    weights_df = weights_df.drop_nulls()
-    print(weights_df)
-    backtester = HawkBacktester(initial_value=1_000_000.0)
-    results = backtester.run(prices_df, weights_df)
-    print(results)
 
 
 def test_input():
@@ -175,5 +108,6 @@ def main():
 if __name__ == "__main__":
 
     # Print the version of the Hawk Backtester
+    # print(f"Hawk Backtester version: {hawk_backtester.__version__}")
     test_input()
     # main()

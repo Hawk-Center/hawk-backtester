@@ -117,9 +117,9 @@ let (
 2. **Weight Events:**
    - DataFrame must include a "date" column and one or more weight columns
    - Date column must be in YYYY-MM-DD or YYYY/MM/DD format
-   - Weight columns must be numeric and between -1.0 and 1.0
+   - Weight columns must be numeric (no longer restricted to [-1.0, 1.0] range for leveraged portfolios)
    - Negative weights represent short positions
-   - Sum of absolute weights should be ≤ 1.0 (remaining is cash)
+   - For unleveraged portfolios, sum of absolute weights should be ≤ 1.0 (remaining is cash); leveraged portfolios may exceed this
    - No null values allowed
    - Example:
      ```python
@@ -187,7 +187,7 @@ The current implementation leans on a few guardrails while still leaving some ga
    - Does **not** emit a warning or error when data is missing; consumers must inspect their data upstream if silent gaps are a concern.
 
 2. **Invalid Weights:**
-   - Enforces per-asset weight bounds of `[-1.0, 1.0]` and rejects null weight entries during validation.
+   - No longer enforces per-asset weight bounds (allows leveraged positions outside [-1.0, 1.0] range) and rejects null weight entries during validation.
    - Does **not** enforce a leverage cap on the aggregate portfolio (e.g., the sum of absolute weights may exceed 1.0 without triggering an error).
 
 3. **Zero Values:**

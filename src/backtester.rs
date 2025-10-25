@@ -12,7 +12,8 @@ pub struct PriceData {
 }
 
 /// Represents a rebalancing event with the desired allocations (weights) for each asset.
-/// The weights should sum to less than or equal to 1.0; any remainder is held as cash.
+/// For unleveraged portfolios, weights should sum to less than or equal to 1.0; any remainder is held as cash.
+/// Leveraged portfolios may have weights exceeding 1.0 in aggregate.
 #[derive(Debug, Clone)]
 pub struct WeightEvent {
     pub timestamp: Date,
