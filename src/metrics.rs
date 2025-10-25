@@ -19,6 +19,8 @@ pub struct BacktestMetrics {
     pub holding_period_years: f64,     // Average holding period in years (1/turnover)
     pub daily_slippage_costs: Vec<f64>, // Slippage cost incurred each day
     pub cumulative_slippage_cost: f64, // Total slippage cost incurred
+    pub daily_commission_costs: Vec<f64>, // Commission cost incurred each day
+    pub cumulative_commission_cost: f64, // Total commission cost incurred
 }
 
 impl BacktestMetrics {
@@ -32,8 +34,10 @@ impl BacktestMetrics {
         volume_traded: Vec<f64>,
         cumulative_volume_traded: f64,
         portfolio_values: &[f64], // Need portfolio values to calculate average portfolio size
-        daily_slippage_costs: Vec<f64>, // Added
-        cumulative_slippage_cost: f64, // Added
+        daily_slippage_costs: Vec<f64>,
+        cumulative_slippage_cost: f64,
+        daily_commission_costs: Vec<f64>,
+        cumulative_commission_cost: f64,
     ) -> Self {
         // Calculate total return (arithmetic return)
         let total_return = daily_returns.iter().fold(1.0, |acc, &r| acc * (1.0 + r)) - 1.0;
@@ -147,6 +151,8 @@ impl BacktestMetrics {
             holding_period_years,
             daily_slippage_costs,
             cumulative_slippage_cost,
+            daily_commission_costs,
+            cumulative_commission_cost,
         }
     }
 }

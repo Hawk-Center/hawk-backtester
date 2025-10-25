@@ -1,7 +1,6 @@
 pub mod backtester;
 pub mod input_handler;
 pub mod metrics;
-pub mod tests;
 
 use backtester::{Backtester, PriceData, WeightEvent};
 use input_handler::{parse_price_df, parse_weights_df};
@@ -32,6 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         initial_value: 10_000.0, // For defult testing purposes, use 10_000.0.
         start_date,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     // Run the simulation and output the DataFrame tail.

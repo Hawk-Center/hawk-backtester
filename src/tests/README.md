@@ -153,15 +153,14 @@ Tests handling of incomplete price data.
 
 #### `test_weight_event_with_invalid_asset`
 Tests handling of invalid assets in weight events.
-- Includes non-existent asset in weight event
-- Verifies backtester handles invalid asset gracefully
-- Ensures portfolio value reflects only valid allocations
+- Includes a weight event referencing an asset with no price data
+- Verifies the backtester still tracks the asset in the positions and weights outputs so
+  the discrepancy is visible to the caller
 
 #### `test_multiple_weight_events_same_day`
-Tests handling of multiple weight events on same day.
-- Creates two weight events for same timestamp
-- Verifies last weight event takes precedence
-- Validates resulting portfolio values
+Multiple weight events on the same trading day are **not supported**. The original test has
+been removed/commented out to make this limitation explicit—only a single weight event
+should be supplied per date.
 
 #### `test_drawdown_calculation`
 Tests drawdown calculation accuracy.
@@ -169,11 +168,36 @@ Tests drawdown calculation accuracy.
 - Verifies maximum drawdown calculation
 - Tests full cycle: initial → peak → drawdown → recovery
 
-#### `test_weight_allocation_bounds`
-Tests handling of invalid weight allocations.
-- Tests weights summing to more than 1.0
-- Verifies backtester continues to function
-- Ensures portfolio value calculations remain valid
+#### `test_leveraged_positions`
+Tests handling of leveraged positions (weights > 1.0).
+- Tests leveraged positions with weights > 1.0
+- Verifies backtester handles leverage correctly
+- Ensures portfolio value and position calculations remain valid
+- Confirms negative cash balance is correctly calculated
+
+#### `test_single_asset_high_leverage_negative_cash`
+Tests high leverage scenarios with single asset positions.
+- Tests 200% leverage (weight = 2.0) resulting in negative cash
+- Verifies position sizing and cash balance calculations
+- Ensures portfolio value remains consistent (position + cash = initial value)
+
+#### `test_multiple_assets_combined_leverage_negative_cash`
+Tests leverage across multiple assets.
+- Tests combined leverage > 100% across multiple positions (0.8 + 0.7 = 1.5)
+- Verifies individual position sizing and combined negative cash balance
+- Confirms total portfolio value calculations are correct
+
+#### `test_mixed_long_short_leveraged_positions`
+Tests leveraged portfolios with mixed long and short positions.
+- Tests net leverage > 100% (1.5 long, -0.2 short = 1.3 net)
+- Verifies position sizing for both long and short leveraged positions
+- Confirms negative cash balance calculation with mixed positions
+
+#### `test_extreme_leverage_negative_cash`
+Tests extreme leverage scenarios.
+- Tests 500% leverage (weight = 5.0) for stress testing
+- Verifies extreme position sizing and highly negative cash balances
+- Ensures system stability under extreme leverage conditions
 
 ### DataFrame Output
 
@@ -183,17 +207,83 @@ Tests structure and content of output DataFrame.
   - date
   - portfolio_value
   - daily_return
+  - daily_log_return
   - cumulative_return
+  - cumulative_log_return
   - drawdown
-- Ensures correct number of rows
+  - volume_traded
+  - daily_slippage_cost
+  - daily_commission_cost
+- Ensures correct number of rows and that the accompanying positions/weights DataFrames
+  only contain tracked assets (cash plus any assets referenced by weight events)
+
+### Commission and Fee Model Tests
+
+#### `test_ibkr_commission_minimum`
+Tests minimum commission enforcement for IBKR Pro Fixed model.
+- Tests small trade resulting in less than $1.00 base commission
+- Verifies minimum commission of $1.00 is applied
+- Uses 1% allocation to SPY at $100/share ($100 trade value)
+
+#### `test_ibkr_commission_standard_rate`
+Tests standard commission rate calculation.
+- Tests trade where commission falls between minimum and maximum
+- Verifies $0.005 per share rate is applied correctly
+- Uses 10% allocation resulting in $1,000 trade value
+
+#### `test_ibkr_commission_maximum_cap`
+Tests maximum commission cap of 1% of trade value.
+- Tests very low-priced stock where per-share commission would exceed 1%
+- Verifies commission is capped at 1% of trade value
+- Uses $0.10/share stock with large allocation
+
+#### `test_ibkr_commission_multiple_trades`
+Tests commission calculation across multiple trades.
+- Simulates portfolio with multiple rebalancing events
+- Verifies cumulative commission is sum of individual trade commissions
+- Tests that each trade is charged separately
+
+#### `test_ibkr_commission_with_rebalancing`
+Tests commission calculation during portfolio rebalancing.
+- Tests commission when changing from one position to another
+- Verifies both opening and closing trades incur commissions
+- Simulates realistic rebalancing scenario
+
+#### `test_no_commission_without_fee_model`
+Tests that no commission is applied when fee model is not specified.
+- Verifies commission cost remains zero when `fee_model` is `None`
+- Ensures backward compatibility with existing code
+
+#### `test_commission_and_slippage_together`
+Tests interaction of commission and slippage costs.
+- Verifies both costs are applied independently
+- Confirms total trading costs include both commission and slippage
+- Tests that both costs reduce portfolio value correctly
+
+#### `test_commission_reduces_portfolio_value`
+Tests that commission costs are properly deducted from portfolio.
+- Compares portfolio value with and without commissions
+- Verifies commission reduces final portfolio value
+- Confirms commission is subtracted from cash balance
+
+#### `test_commission_on_short_positions`
+Tests commission calculation for short positions.
+- Verifies commission is calculated on absolute trade value
+- Tests that short positions (negative weights) incur commissions
+- Confirms commission formula works for both long and short trades
+
+#### `test_commission_dataframe_column`
+Tests that commission costs appear in output DataFrame.
+- Verifies `daily_commission_cost` column exists in results
+- Confirms commission values are recorded on rebalance days
+- Tests that commission is zero on non-rebalance days
 
 ### Input Handler Tests
 
 #### `test_input_handler_date_ordering`
-Tests preservation of date order in input data.
+Tests enforced ascending order of dates in input data.
 - Creates DataFrame with unordered dates
-- Verifies dates are preserved in original order
-- Ensures no automatic sorting is applied
+- Verifies the parser sorts dates from earliest to latest and realigns their price data
 
 #### `test_input_handler_date_format`
 Tests handling of various date format inputs.
@@ -205,8 +295,9 @@ Tests handling of various date format inputs.
 
 #### `test_input_handler_invalid_dates`
 Tests rejection of invalid date formats.
-- Attempts to parse ISO format dates (unsupported)
-- Verifies appropriate error is returned
+- Confirms ISO (`YYYY-MM-DD`) and slash-separated (`YYYY/M/D`) styles parse successfully
+- Verifies other separators and non-ISO orders (e.g., `YYYY.MM.DD`, `MM-DD-YYYY`) raise
+  errors
 
 #### `test_input_handler_weight_date_alignment`
 Tests alignment of price and weight data dates.
@@ -246,14 +337,18 @@ Tests handling of weight events beyond available price data.
 The test suite covers:
 - Basic portfolio operations
 - Price updates and rebalancing
-- Edge cases (zero values, missing data)
+- Edge cases (zero values, missing data, extreme leverage)
 - Error conditions
 - Data structure validation
 - Metric calculations
+- Transaction costs (slippage and commissions)
+- Commission models (IBKR Pro Fixed)
 - Date handling and formatting
 - Input data validation and processing
 - Date boundaries and gaps
 - Future event handling
+- Long and short positions
+- Leveraged portfolios
 
 ## Future Test Considerations
 
@@ -262,9 +357,14 @@ Potential areas for additional testing:
 2. Complex rebalancing scenarios
 3. Additional edge cases in price movements
 4. Stress testing with extreme market conditions
-5. Testing of all performance metrics
+5. Testing of all performance metrics in detail
 6. Additional date format variations
 7. Cross-timezone date handling
 8. Invalid weight format handling
 9. Date interpolation strategies
 10. Custom start/end date handling
+11. Additional commission models (tiered, percentage-based)
+12. Borrowing costs for short positions
+13. Margin requirements and margin calls
+14. Tax-lot accounting
+15. Partial fills and order execution modeling

@@ -1,8 +1,5 @@
-use crate::backtester::{Backtester, DollarPosition, PortfolioState, PriceData, WeightEvent};
-use crate::input_handler::{parse_price_df, parse_weights_df};
+use crate::backtester::{Backtester, PriceData, WeightEvent};
 use crate::metrics::BacktestMetrics;
-use polars::prelude::*;
-use std::collections::HashMap;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 
@@ -50,9 +47,10 @@ fn test_drawdown_calculation() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     let drawdown_series = df.column("drawdown").unwrap();
 
@@ -83,6 +81,8 @@ mod tests {
             &vec![1000.0; 252],               // constant portfolio value of 1000.0
             vec![0.0; 252],                   // daily slippage costs (assuming 0)
             0.0,                              // cumulative slippage cost (assuming 0)
+            vec![0.0; 252],                   // daily commission costs (assuming 0)
+            0.0,                              // cumulative commission cost (assuming 0)
         );
 
         // For 1000 volume over 1 year with avg portfolio value of 1000,
@@ -111,6 +111,8 @@ mod tests {
             &vec![1000.0; 504], // constant portfolio value of 1000.0
             vec![0.0; 504],     // daily slippage costs (assuming 0)
             0.0,                // cumulative slippage cost (assuming 0)
+            vec![0.0; 504],     // daily commission costs (assuming 0)
+            0.0,                // cumulative commission cost (assuming 0)
         );
 
         // For 4000 volume over 2 years with avg portfolio value of 1000,
@@ -139,6 +141,8 @@ mod tests {
             &vec![1000.0; 252], // constant portfolio value of 1000.0
             vec![0.0; 252],     // daily slippage costs (assuming 0)
             0.0,                // cumulative slippage cost (assuming 0)
+            vec![0.0; 252],     // daily commission costs (assuming 0)
+            0.0,                // cumulative commission cost (assuming 0)
         );
 
         assert_eq!(
@@ -161,6 +165,8 @@ mod tests {
             &vec![1000.0; 252], // constant portfolio value of 1000.0
             vec![0.0; 252],     // daily slippage costs (assuming 0)
             0.0,                // cumulative slippage cost (assuming 0)
+            vec![0.0; 252],     // daily commission costs (assuming 0)
+            0.0,                // cumulative commission cost (assuming 0)
         );
 
         // For 5200 volume over 1 year with avg portfolio value of 1000,
@@ -194,6 +200,8 @@ mod tests {
             &vec![1000.0; 252], // constant portfolio value
             vec![0.0; 252],     // daily slippage costs (assuming 0)
             0.0,                // cumulative slippage cost (assuming 0)
+            vec![0.0; 252],     // daily commission costs (assuming 0)
+            0.0,                // cumulative commission cost (assuming 0)
         );
 
         // Check individual trade volumes are preserved
@@ -229,6 +237,8 @@ mod tests {
             &vec![0.0],  // zero portfolio value
             vec![0.0],   // daily slippage costs (assuming 0)
             0.0,         // cumulative slippage cost (assuming 0)
+            vec![0.0],   // daily commission costs (assuming 0)
+            0.0,         // cumulative commission cost (assuming 0)
         );
 
         assert_eq!(
@@ -251,6 +261,8 @@ mod tests {
             &vec![], // no portfolio values
             vec![],  // daily slippage costs
             0.0,     // cumulative slippage cost
+            vec![],  // daily commission costs
+            0.0,     // cumulative commission cost
         );
 
         assert_eq!(

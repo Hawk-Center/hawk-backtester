@@ -1,4 +1,3 @@
-use polars::prelude::SeriesTrait;
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -94,13 +93,7 @@ fn validate_weights_df(df: &DataFrame) -> Result<(), PolarsError> {
                 ));
             }
 
-            // Check weight values are between -1 and 1
-            let values: Vec<f64> = col.f64()?.into_iter().map(|v| v.unwrap_or(0.0)).collect();
-            if values.iter().any(|&w| w < -1.0 || w > 1.0) {
-                return Err(PolarsError::ComputeError(
-                    format!("Weights in column {} must be between -1 and 1", col_name).into(),
-                ));
-            }
+            // Weight values are no longer restricted to [-1, 1] range to allow leveraged portfolios
         }
     }
 
@@ -136,7 +129,7 @@ fn validate_dates(df: &DataFrame) -> Result<(), PolarsError> {
     for i in 0..df.height() {
         let date_str = date_strs.get(i).unwrap();
         // Determine if the date is in ISO format or slash format
-        let (parts, separator): (Vec<&str>, &str) = if date_str.contains('-') {
+        let (parts, _separator): (Vec<&str>, &str) = if date_str.contains('-') {
             (date_str.split('-').collect(), "-")
         } else if date_str.contains('/') {
             (date_str.split('/').collect(), "/")

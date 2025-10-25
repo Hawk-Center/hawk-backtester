@@ -12,7 +12,8 @@ pub struct PriceData {
 }
 
 /// Represents a rebalancing event with the desired allocations (weights) for each asset.
-/// The weights should sum to less than or equal to 1.0; any remainder is held as cash.
+/// For unleveraged portfolios, weights should sum to less than or equal to 1.0; any remainder is held as cash.
+/// Leveraged portfolios may have weights exceeding 1.0 in aggregate.
 #[derive(Debug, Clone)]
 pub struct WeightEvent {
     pub timestamp: Date,
@@ -60,6 +61,37 @@ impl PortfolioState {
     }
 }
 
+/// Calculates IBKR Pro Fixed commission for a single trade.
+///
+/// Commission model for U.S. stocks/ETFs:
+/// - Cost per share: USD 0.005 / share
+/// - Minimum per order: USD 1.00
+/// - Maximum per order: 1% of trade value
+///
+/// :param trade_value: Absolute dollar value of the trade
+/// :param price: Price per share
+/// :return: Commission cost in dollars
+fn calculate_ibkr_pro_fixed_commission(trade_value: f64, price: f64) -> f64 {
+    if trade_value <= 0.0 || price <= 0.0 {
+        return 0.0;
+    }
+    
+    let shares = trade_value / price;
+    let cost_per_share = 0.005;
+    let min_per_order = 1.0;
+    let max_per_order_pct = 0.01;
+    
+    // Calculate base commission
+    let commission = shares * cost_per_share;
+    
+    // Apply minimum
+    let commission = commission.max(min_per_order);
+    
+    // Apply maximum (1% of trade value)
+    let max_commission = trade_value * max_per_order_pct;
+    commission.min(max_commission)
+}
+
 /// A simple backtester that simulates the evolution of a portfolio based on price data and
 /// sporadic weight (rebalancing) events.
 pub struct Backtester<'a> {
@@ -72,6 +104,8 @@ pub struct Backtester<'a> {
     pub start_date: Date,
     /// Slippage cost in basis points (e.g., 5 means 0.05%).
     pub slippage_bps: f64,
+    /// Fee model to use for commission calculations (e.g., "ibkr_pro_fixed").
+    pub fee_model: Option<String>,
 }
 
 impl<'a> Backtester<'a> {
@@ -100,6 +134,8 @@ impl<'a> Backtester<'a> {
         let mut cumulative_volume_traded = 0.0;
         let mut daily_slippage_costs = Vec::new();
         let mut cumulative_slippage_cost = 0.0;
+        let mut daily_commission_costs = Vec::new();
+        let mut cumulative_commission_cost = 0.0;
 
         // Track position values and weights over time
         let mut position_values: HashMap<Arc<str>, Vec<f64>> = HashMap::new();
@@ -148,6 +184,7 @@ impl<'a> Backtester<'a> {
 
             let mut trade_volume = 0.0; // Initialize trade volume for this day
             let mut total_slippage_cost = 0.0; // Initialize slippage cost for this day
+            let mut total_commission_cost = 0.0; // Initialize commission cost for this day
 
             // If a new weight event is due (check is now simpler as we pre-advanced weight_index)
             if weight_index < n_events
@@ -176,6 +213,34 @@ impl<'a> Backtester<'a> {
                 }
                 // --- End Slippage Cost Calculation ---
 
+                // --- Calculate Commission Cost ---
+                if let Some(ref model) = self.fee_model {
+                    if model == "ibkr_pro_fixed" {
+                        let mut all_assets: HashSet<Arc<str>> = HashSet::new();
+                        all_assets.extend(portfolio.positions.keys().cloned());
+                        all_assets.extend(event.weights.keys().cloned());
+
+                        for asset in all_assets {
+                            let current_allocation = portfolio
+                                .positions
+                                .get(&asset)
+                                .map(|pos| pos.allocated)
+                                .unwrap_or(0.0);
+                            let target_weight = event.weights.get(&asset).copied().unwrap_or(0.0);
+                            let target_allocation = target_weight * current_total;
+                            let delta = (target_allocation - current_allocation).abs();
+                            
+                            if delta > 0.0 {
+                                if let Some(&price) = price_data.prices.get(&asset) {
+                                    let commission = calculate_ibkr_pro_fixed_commission(delta, price);
+                                    total_commission_cost += commission;
+                                }
+                            }
+                        }
+                    }
+                }
+                // --- End Commission Cost Calculation ---
+
                 // --- Calculate Trade Volume ---
                 // Loop 1: Iterate through currently held positions
                 for (asset, pos) in &portfolio.positions {
@@ -200,6 +265,7 @@ impl<'a> Backtester<'a> {
 
                 cumulative_volume_traded += trade_volume;
                 cumulative_slippage_cost += total_slippage_cost;
+                cumulative_commission_cost += total_commission_cost;
 
                 portfolio.positions.clear();
                 let mut allocated_sum = 0.0;
@@ -221,17 +287,19 @@ impl<'a> Backtester<'a> {
                 // Hold the remainder in cash.
                 portfolio.cash = current_total * (1.0 - allocated_sum);
 
-                // --- Apply Slippage Cost ---
+                // --- Apply Trading Costs ---
                 portfolio.cash -= total_slippage_cost;
-                // --- End Apply Slippage Cost ---
+                portfolio.cash -= total_commission_cost;
+                // --- End Apply Trading Costs ---
 
                 weight_index += 1;
                 num_trades += 1;
             }
 
-            // Record trade volume and slippage for this day
+            // Record trade volume, slippage, and commission for this day
             volume_traded.push(trade_volume);
             daily_slippage_costs.push(total_slippage_cost);
+            daily_commission_costs.push(total_commission_cost);
 
             // Compute current portfolio value.
             let current_value = portfolio.total_value();
@@ -328,6 +396,8 @@ impl<'a> Backtester<'a> {
             &portfolio_values,
             daily_slippage_costs.clone(),
             cumulative_slippage_cost,
+            daily_commission_costs.clone(),
+            cumulative_commission_cost,
         );
 
         // Create the main performance DataFrame
@@ -341,6 +411,7 @@ impl<'a> Backtester<'a> {
         let drawdown_series = Series::new("drawdown".into(), drawdowns);
         let volume_traded_series = Series::new("volume_traded".into(), volume_traded);
         let daily_slippage_series = Series::new("daily_slippage_cost".into(), daily_slippage_costs);
+        let daily_commission_series = Series::new("daily_commission_cost".into(), daily_commission_costs);
 
         let performance_df = DataFrame::new(vec![
             date_series.clone().into(),
@@ -352,6 +423,7 @@ impl<'a> Backtester<'a> {
             drawdown_series.into(),
             volume_traded_series.into(),
             daily_slippage_series.into(),
+            daily_commission_series.into(),
         ])?;
 
         // Create position values DataFrame

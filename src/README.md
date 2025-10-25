@@ -10,10 +10,14 @@ The Hawk Backtester is a high-performance portfolio simulation tool implemented 
 - **Portfolio Management:** Tracks positions and cash balances
 - **Rebalancing Logic:** Implements weight-based portfolio rebalancing with irregular rebalance support
 - **Long/Short Support:** Handles both long and short positions through weight specification
-- **Performance Metrics:** Calculates key metrics including returns, drawdowns, and portfolio values
-- **DataFrame Output:** Returns results in a Polars DataFrame
+- **Leverage Support:** Allows leveraged portfolios with weights exceeding ±1.0
+- **Transaction Cost Modeling:**
+  - Slippage costs in basis points
+  - Commission models (IBKR Pro Fixed pricing)
+- **Performance Metrics:** Calculates comprehensive metrics including returns, risk measures, turnover, and trading costs
+- **DataFrame Output:** Returns four Polars DataFrames (results, positions, weights, metrics)
 - **Flexible Date Handling:** Supports both ISO and slash-separated date formats
-- **Weight Validation:** Strict validation of portfolio weights to ensure proper allocation
+- **Weight Validation:** Validates portfolio weights and rejects null entries
 
 ## Architecture 
 
@@ -78,6 +82,17 @@ pub struct PortfolioState {
    drawdown = (current_value / peak_value) - 1
    ```
 
+5. **Slippage Cost:**
+   ```
+   slippage_cost = |target_allocation - current_allocation| * (slippage_bps / 10000)
+   ```
+
+6. **IBKR Pro Fixed Commission:**
+   ```
+   shares = trade_value / price
+   commission = max(min(shares * 0.005, trade_value * 0.01), 1.0)
+   ```
+
 ## Usage
 
 ### Basic Example
@@ -87,10 +102,25 @@ let backtester = Backtester {
     weight_events: &weight_events,
     initial_value: 1000.0,
     start_date: price_data[0].timestamp,  // Specify simulation start date
+    slippage_bps: 0.5,                    // Optional slippage cost in basis points
+    fee_model: Some("ibkr_pro_fixed".to_string()), // Optional commission model
 };
 
-let (results_df, metrics) = backtester.run()?;
+let (
+    performance_df,
+    position_values_df,
+    position_weights_df,
+    metrics,
+) = backtester.run()?;
 ```
+
+**Parameters:**
+- `prices`: Slice of PriceData sorted by timestamp
+- `weight_events`: Slice of WeightEvent sorted by timestamp
+- `initial_value`: Starting portfolio value in dollars
+- `start_date`: Simulation start date (typically first weight event date)
+- `slippage_bps`: Slippage cost in basis points (0.0 = no slippage)
+- `fee_model`: Commission model ("ibkr_pro_fixed" or None)
 
 ### Input Requirements
 
@@ -101,7 +131,8 @@ let (results_df, metrics) = backtester.run()?;
    - No null values allowed
    - Example:
      ```python
-     prices_df = pd.DataFrame({
+     import polars as pl
+     prices_df = pl.DataFrame({
          'date': ['2023-01-01', '2023-01-02'],
          'AAPL': [150.0, 152.0],
          'GOOGL': [2800.0, 2850.0]
@@ -111,13 +142,14 @@ let (results_df, metrics) = backtester.run()?;
 2. **Weight Events:**
    - DataFrame must include a "date" column and one or more weight columns
    - Date column must be in YYYY-MM-DD or YYYY/MM/DD format
-   - Weight columns must be numeric and between -1.0 and 1.0
+   - Weight columns must be numeric (no longer restricted to [-1.0, 1.0] range for leveraged portfolios)
    - Negative weights represent short positions
-   - Sum of absolute weights should be ≤ 1.0 (remaining is cash)
+   - For unleveraged portfolios, sum of absolute weights should be ≤ 1.0 (remaining is cash); leveraged portfolios may exceed this
    - No null values allowed
    - Example:
      ```python
-     weights_df = pd.DataFrame({
+     import polars as pl
+     weights_df = pl.DataFrame({
          'date': ['2023-01-01', '2023-01-02'],
          'AAPL': [0.3, -0.4],    # Long 30%, then Short 40%
          'GOOGL': [-0.2, 0.3],   # Short 20%, then Long 30%
@@ -136,36 +168,82 @@ Both formats support flexible padding:
 
 ### Output Format
 
-The backtester returns a tuple containing:
+The backtester returns a tuple containing four components:
 
-1. **DataFrame with columns:**
+1. **Performance DataFrame with columns:**
    - `date`: Timestamp in ISO 8601 format (YYYY-MM-DD)
    - `portfolio_value`: Total portfolio value
-   - `daily_return`: Daily percentage return
-   - `cumulative_return`: Cumulative return since inception
+   - `daily_return`: Daily arithmetic percentage return
+   - `daily_log_return`: Daily log return
+   - `cumulative_return`: Cumulative arithmetic return since inception
+   - `cumulative_log_return`: Cumulative log return since inception
    - `drawdown`: Current drawdown from peak
+   - `volume_traded`: Absolute dollar volume traded on the rebalance day
+   - `daily_slippage_cost`: Slippage cost incurred on the day
+   - `daily_commission_cost`: Commission cost incurred on the day
 
-2. **Metrics including:**
-   - Total return
-   - Annualized return
-   - Volatility
-   - Sharpe ratio
-   - Maximum drawdown
+2. **Position Values DataFrame:** Dollar allocations for each asset and cash over time.
+   - `date`: Timestamp
+   - One column per asset with dollar allocation
+   - `cash`: Cash balance (can be negative with leverage)
+
+3. **Position Weights DataFrame:** Portfolio weights for each asset and cash over time.
+   - `date`: Timestamp
+   - One column per asset with percentage weight
+   - `cash`: Cash weight
+
+4. **BacktestMetrics struct containing:**
+   - **Performance:** Total return, log return, annualized return, annualized volatility
+   - **Risk-adjusted:** Sharpe ratio, Sortino ratio
+   - **Risk:** Maximum drawdown, average drawdown, average daily return, win rate
+   - **Trading activity:** Number of trades, volume traded per rebalance, cumulative volume traded, portfolio turnover, holding period (years)
+   - **Trading costs:** Daily slippage costs, cumulative slippage cost, daily commission costs, cumulative commission cost
+
+## Transaction Cost Models
+
+### Slippage Cost
+Slippage represents the cost of moving the market when executing trades. It is specified in basis points and applied to the absolute dollar volume of each trade:
+```
+slippage_cost = |target_allocation - current_allocation| * (slippage_bps / 10000)
+```
+
+### Commission Models
+
+#### IBKR Pro Fixed
+Implements Interactive Brokers Pro Fixed pricing for U.S. stocks/ETFs:
+- **Cost per share:** $0.005 per share
+- **Minimum per order:** $1.00
+- **Maximum per order:** 1% of trade value
+
+Formula:
+```rust
+fn calculate_ibkr_pro_fixed_commission(trade_value: f64, price: f64) -> f64 {
+    if trade_value <= 0.0 || price <= 0.0 {
+        return 0.0;
+    }
+    let shares = trade_value / price;
+    let commission = shares * 0.005;
+    let commission = commission.max(1.0);  // Apply minimum
+    commission.min(trade_value * 0.01)      // Apply maximum
+}
+```
+
+To use a commission model, set the `fee_model` parameter when creating the backtester:
+```rust
+fee_model: Some("ibkr_pro_fixed".to_string())
+```
 
 ## Error Handling
 
-The backtester handles several edge cases:
+The current implementation leans on a few guardrails while still leaving some gaps contributors should be aware of:
 
 1. **Missing Prices:**
-   - Maintains previous position values
-   - Logs warning if critical prices are missing
+   - Keeps the most recent known price for the asset.
+   - Does **not** emit a warning or error when data is missing; consumers must inspect their data upstream if silent gaps are a concern.
 
 2. **Invalid Weights:**
-   - Validates weights must be between -1.0 and 1.0
-   - Returns error for any weight outside valid range
-   - For sum of absolute weights > 1.0:
-     - Returns error to prevent excessive leverage
-   - Missing weights are treated as 0.0
+   - No longer enforces per-asset weight bounds (allows leveraged positions outside [-1.0, 1.0] range) and rejects null weight entries during validation.
+   - Does **not** enforce a leverage cap on the aggregate portfolio (e.g., the sum of absolute weights may exceed 1.0 without triggering an error).
 
 3. **Zero Values:**
    - Properly handles zero initial value
@@ -176,6 +254,8 @@ The backtester handles several edge cases:
    - Validates date formats strictly
    - Rejects invalid dates (e.g., "2023-13-01")
    - Handles date gaps appropriately
+
+> **TODO:** Add explicit logging for missing-price scenarios and introduce leverage-limit checks so misconfigured portfolios fail fast.
 
 ## Performance Considerations
 
@@ -222,10 +302,12 @@ The backtester includes comprehensive test coverage:
 ## Future Enhancements
 
 1. **Functionality:**
-   - Transaction cost modeling
-   - Tax-lot accounting
-   - Custom rebalancing rules
-   - Risk management constraints
+   - Additional commission models (tiered, percentage-based)
+   - Tax-lot accounting for realized gains/losses
+   - Custom rebalancing rules and constraints
+   - Risk management constraints (position limits, sector limits)
+   - Borrowing costs for short positions
+   - Margin requirements and margin calls
 
 2. **Performance:**
    - Parallel processing for large datasets
@@ -236,6 +318,7 @@ The backtester includes comprehensive test coverage:
    - Real-time data feeds
    - External risk models
    - Custom metric calculations
+   - Support for options and derivatives
 
 ## Contributing
 

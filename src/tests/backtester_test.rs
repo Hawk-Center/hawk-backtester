@@ -1,5 +1,4 @@
 use crate::backtester::{Backtester, DollarPosition, PortfolioState, PriceData, WeightEvent};
-use crate::input_handler::{parse_price_df, parse_weights_df};
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -88,9 +87,10 @@ fn test_backtester_no_weight_event() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Test main results DataFrame
     let pv_series = df.column("portfolio_value").unwrap();
@@ -162,9 +162,10 @@ fn test_backtester_with_weight_event() {
         initial_value: 1000.0,
         start_date: pd1.timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
 
     // Test main results
     let pv_series = df.column("portfolio_value").unwrap();
@@ -230,9 +231,10 @@ fn test_multiple_weight_events() {
         initial_value: 1000.0,
         start_date: pd1.timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest failed");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
 
     // Test final portfolio value
     let pv_series = df.column("portfolio_value").unwrap();
@@ -269,6 +271,7 @@ fn test_dataframe_output() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
@@ -284,6 +287,7 @@ fn test_dataframe_output() {
         "drawdown",
         "volume_traded",
         "daily_slippage_cost",
+        "daily_commission_cost",
     ];
     assert_eq!(df.get_column_names(), expected_cols);
     assert_eq!(df.height(), prices.len());
@@ -369,9 +373,10 @@ fn test_backtester_with_zero_initial_value() {
         initial_value: 0.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Check main results are zero
     let pv_series = df.column("portfolio_value").unwrap();
@@ -427,9 +432,10 @@ fn test_backtester_with_missing_prices() {
         initial_value: 1000.0,
         start_date: pd1.timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
     assert_eq!(df.height(), 3);
     assert_eq!(positions_df.height(), 3);
     assert_eq!(weights_df.height(), 3);
@@ -464,9 +470,10 @@ fn test_weight_event_with_invalid_asset() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (_df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Check that both assets are tracked even though B has no prices
     assert!(positions_df
@@ -520,7 +527,7 @@ fn test_weight_event_with_invalid_asset() {
 // }
 
 #[test]
-fn test_weight_allocation_bounds() {
+fn test_leveraged_positions() {
     let now = OffsetDateTime::now_utc();
 
     let prices = vec![
@@ -528,7 +535,7 @@ fn test_weight_allocation_bounds() {
         make_price_data(now + Duration::days(1), vec![("A", 11.0)]),
     ];
 
-    // Test with weights summing to more than 1.0
+    // Test with leveraged position (weight > 1.0)
     let weight_events = vec![make_weight_event(now, vec![("A", 1.2)])];
 
     let backtester = Backtester {
@@ -537,14 +544,200 @@ fn test_weight_allocation_bounds() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (results_df, positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
-    // Even with weight > 1, the portfolio should still function
-    let pv_series = df.column("portfolio_value").unwrap();
+    // Leveraged portfolio should still function correctly
+    let pv_series = results_df.column("portfolio_value").unwrap();
     let initial_value: f64 = pv_series.get(0).unwrap().extract().unwrap();
     assert!((initial_value - 1000.0).abs() < 1e-10);
+
+    // Check that the position size reflects the leverage
+    let a_position = positions_df.column("A").unwrap();
+    let initial_position: f64 = a_position.get(0).unwrap().extract().unwrap();
+    // Position should be 1.2 * 1000 = 1200
+    assert!((initial_position - 1200.0).abs() < 1e-10);
+
+    // Check that cash balance is negative due to leverage
+    let cash_position = positions_df.column("cash").unwrap();
+    let initial_cash: f64 = cash_position.get(0).unwrap().extract().unwrap();
+    // Cash should be negative: 1000 * (1.0 - 1.2) = -200
+    assert!((initial_cash - (-200.0)).abs() < 1e-10);
+}
+
+#[test]
+fn test_single_asset_high_leverage_negative_cash() {
+    let now = OffsetDateTime::now_utc();
+
+    let prices = vec![
+        make_price_data(now, vec![("A", 100.0)]),
+        make_price_data(now + Duration::days(1), vec![("A", 105.0)]),
+    ];
+
+    // Test with high leverage (weight = 2.0 = 200% position)
+    let weight_events = vec![make_weight_event(now, vec![("A", 2.0)])];
+
+    let backtester = Backtester {
+        prices: &prices,
+        weight_events: &weight_events,
+        initial_value: 1000.0,
+        start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
+        fee_model: None,
+    };
+
+    let (results_df, positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
+
+    // Check that the position size reflects the high leverage
+    let a_position = positions_df.column("A").unwrap();
+    let initial_position: f64 = a_position.get(0).unwrap().extract().unwrap();
+    // Position should be 2.0 * 1000 = 2000
+    assert!((initial_position - 2000.0).abs() < 1e-10);
+
+    // Check that cash balance is negative due to high leverage
+    let cash_position = positions_df.column("cash").unwrap();
+    let initial_cash: f64 = cash_position.get(0).unwrap().extract().unwrap();
+    // Cash should be negative: 1000 * (1.0 - 2.0) = -1000
+    assert!((initial_cash - (-1000.0)).abs() < 1e-10);
+
+    // Portfolio value should still be 1000 (position + cash = 2000 - 1000 = 1000)
+    let pv_series = results_df.column("portfolio_value").unwrap();
+    let initial_pv: f64 = pv_series.get(0).unwrap().extract().unwrap();
+    assert!((initial_pv - 1000.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_multiple_assets_combined_leverage_negative_cash() {
+    let now = OffsetDateTime::now_utc();
+
+    let prices = vec![
+        make_price_data(now, vec![("A", 100.0), ("B", 50.0)]),
+        make_price_data(now + Duration::days(1), vec![("A", 105.0), ("B", 52.0)]),
+    ];
+
+    // Test with multiple assets where combined weights > 1.0 (0.8 + 0.7 = 1.5)
+    let weight_events = vec![make_weight_event(now, vec![("A", 0.8), ("B", 0.7)])];
+
+    let backtester = Backtester {
+        prices: &prices,
+        weight_events: &weight_events,
+        initial_value: 1000.0,
+        start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
+        fee_model: None,
+    };
+
+    let (results_df, positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
+
+    // Check position sizes
+    let a_position = positions_df.column("A").unwrap();
+    let b_position = positions_df.column("B").unwrap();
+    let initial_a_pos: f64 = a_position.get(0).unwrap().extract().unwrap();
+    let initial_b_pos: f64 = b_position.get(0).unwrap().extract().unwrap();
+
+    // Positions should be 0.8 * 1000 = 800 and 0.7 * 1000 = 700
+    assert!((initial_a_pos - 800.0).abs() < 1e-10);
+    assert!((initial_b_pos - 700.0).abs() < 1e-10);
+
+    // Check that cash balance is negative due to combined leverage
+    let cash_position = positions_df.column("cash").unwrap();
+    let initial_cash: f64 = cash_position.get(0).unwrap().extract().unwrap();
+    // Cash should be negative: 1000 * (1.0 - 1.5) = -500
+    assert!((initial_cash - (-500.0)).abs() < 1e-10);
+
+    // Portfolio value should still be 1000 (positions + cash = 800 + 700 - 500 = 1000)
+    let pv_series = results_df.column("portfolio_value").unwrap();
+    let initial_pv: f64 = pv_series.get(0).unwrap().extract().unwrap();
+    assert!((initial_pv - 1000.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_mixed_long_short_leveraged_positions() {
+    let now = OffsetDateTime::now_utc();
+
+    let prices = vec![
+        make_price_data(now, vec![("A", 100.0), ("B", 50.0)]),
+        make_price_data(now + Duration::days(1), vec![("A", 95.0), ("B", 55.0)]),
+    ];
+
+    // Test with mixed leveraged long/short positions where net weights > 1.0
+    // Long 1.5x on A, Short 0.2x on B (net leverage = 1.3x > 1.0)
+    let weight_events = vec![make_weight_event(now, vec![("A", 1.5), ("B", -0.2)])];
+
+    let backtester = Backtester {
+        prices: &prices,
+        weight_events: &weight_events,
+        initial_value: 1000.0,
+        start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
+        fee_model: None,
+    };
+
+    let (results_df, positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
+
+    // Check position sizes
+    let a_position = positions_df.column("A").unwrap();
+    let b_position = positions_df.column("B").unwrap();
+    let initial_a_pos: f64 = a_position.get(0).unwrap().extract().unwrap();
+    let initial_b_pos: f64 = b_position.get(0).unwrap().extract().unwrap();
+
+    // Positions should be 1.5 * 1000 = 1500 (long) and -0.2 * 1000 = -200 (short)
+    assert!((initial_a_pos - 1500.0).abs() < 1e-10);
+    assert!((initial_b_pos - (-200.0)).abs() < 1e-10);
+
+    // Check that cash balance is negative due to net weights > 1.0 (1.5 - 0.2 = 1.3)
+    let cash_position = positions_df.column("cash").unwrap();
+    let initial_cash: f64 = cash_position.get(0).unwrap().extract().unwrap();
+    // Cash should be negative: 1000 * (1.0 - 1.3) = -300 (where 1.3 = 1.5 + (-0.2))
+    assert!((initial_cash - (-300.0)).abs() < 1e-10);
+
+    // Portfolio value should be 1000 (positions + cash = 1500 - 200 - 300 = 1000)
+    let pv_series = results_df.column("portfolio_value").unwrap();
+    let initial_pv: f64 = pv_series.get(0).unwrap().extract().unwrap();
+    assert!((initial_pv - 1000.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_extreme_leverage_negative_cash() {
+    let now = OffsetDateTime::now_utc();
+
+    let prices = vec![
+        make_price_data(now, vec![("A", 100.0)]),
+        make_price_data(now + Duration::days(1), vec![("A", 110.0)]),
+    ];
+
+    // Test with extreme leverage (weight = 5.0 = 500% position)
+    let weight_events = vec![make_weight_event(now, vec![("A", 5.0)])];
+
+    let backtester = Backtester {
+        prices: &prices,
+        weight_events: &weight_events,
+        initial_value: 1000.0,
+        start_date: prices[0].timestamp,
+        slippage_bps: 0.0,
+        fee_model: None,
+    };
+
+    let (results_df, positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
+
+    // Check that the position size reflects extreme leverage
+    let a_position = positions_df.column("A").unwrap();
+    let initial_position: f64 = a_position.get(0).unwrap().extract().unwrap();
+    // Position should be 5.0 * 1000 = 5000
+    assert!((initial_position - 5000.0).abs() < 1e-10);
+
+    // Check that cash balance is highly negative due to extreme leverage
+    let cash_position = positions_df.column("cash").unwrap();
+    let initial_cash: f64 = cash_position.get(0).unwrap().extract().unwrap();
+    // Cash should be negative: 1000 * (1.0 - 5.0) = -4000
+    assert!((initial_cash - (-4000.0)).abs() < 1e-10);
+
+    // Portfolio value should still be 1000 (position + cash = 5000 - 4000 = 1000)
+    let pv_series = results_df.column("portfolio_value").unwrap();
+    let initial_pv: f64 = pv_series.get(0).unwrap().extract().unwrap();
+    assert!((initial_pv - 1000.0).abs() < 1e-10);
 }
 
 #[test]
@@ -567,14 +760,15 @@ fn test_short_position_returns() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (results_df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Get the portfolio values
-    let pv_series = df.column("portfolio_value").unwrap();
-    let daily_series = df.column("daily_return").unwrap();
-    let cum_series = df.column("cumulative_return").unwrap();
+    let pv_series = results_df.column("portfolio_value").unwrap();
+    let daily_series = results_df.column("daily_return").unwrap();
+    let cum_series = results_df.column("cumulative_return").unwrap();
 
     // Day 1: Short position should gain when price falls 10%
     // Initial short position: -500 (50% of 1000)
@@ -655,13 +849,14 @@ fn test_mixed_long_short_portfolio() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (results_df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Get the portfolio value and returns
-    let pv_series = df.column("portfolio_value").unwrap();
-    let cum_series = df.column("cumulative_return").unwrap();
+    let pv_series = results_df.column("portfolio_value").unwrap();
+    let cum_series = results_df.column("cumulative_return").unwrap();
 
     // Calculate expected return:
     // LONG position (50%): +10% * 0.5 = +5%
@@ -707,9 +902,10 @@ fn test_backtester_respects_start_date() {
         initial_value: 1000.0,
         start_date: start.date(),
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
 
     // Verify we only get data from the start date onwards for all DataFrames
     assert_eq!(df.height(), 3); // Only dates >= start_date
@@ -761,12 +957,13 @@ fn test_volume_traded() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
-    let (df, positions_df, weights_df, metrics) = backtester.run().expect("Backtest should run");
+    let (results_df, _positions_df, _weights_df, metrics) = backtester.run().expect("Backtest should run");
 
     // Get volume traded series
-    let volume_series = df.column("volume_traded").unwrap();
+    let volume_series = results_df.column("volume_traded").unwrap();
 
     // First day should have initial allocation volume
     let day1_volume: f64 = volume_series.get(0).unwrap().try_extract().unwrap();
@@ -828,9 +1025,10 @@ fn test_slippage_cost() {
         initial_value,
         start_date: prices[0].timestamp,
         slippage_bps,
+        fee_model: None,
     };
 
-    let (df_results, df_positions, _df_weights, metrics) =
+    let (results_df, positions_df, _weights_df, metrics) =
         backtester.run().expect("Backtest should run");
 
     // --- Expected Calculations ---
@@ -847,7 +1045,7 @@ fn test_slippage_cost() {
     // --- End Expected Calculations ---
 
     // Check portfolio value after slippage deduction
-    let pv_series = df_results.column("portfolio_value").unwrap();
+    let pv_series = results_df.column("portfolio_value").unwrap();
     let value_day1: f64 = pv_series.get(0).unwrap().try_extract().unwrap();
     let value_day2: f64 = pv_series.get(1).unwrap().try_extract().unwrap();
 
@@ -862,7 +1060,7 @@ fn test_slippage_cost() {
 
 
     // Check cash position after slippage deduction
-    let cash_series = df_positions.column("cash").unwrap();
+    let cash_series = positions_df.column("cash").unwrap();
     let cash_day1: f64 = cash_series.get(0).unwrap().try_extract().unwrap();
     let cash_day2: f64 = cash_series.get(1).unwrap().try_extract().unwrap();
 
@@ -876,7 +1074,7 @@ fn test_slippage_cost() {
     );
 
     // Check daily slippage cost column in results
-    let daily_slippage_series = df_results.column("daily_slippage_cost").unwrap();
+    let daily_slippage_series = results_df.column("daily_slippage_cost").unwrap();
     let slippage_day1: f64 = daily_slippage_series.get(0).unwrap().try_extract().unwrap();
     let slippage_day2: f64 = daily_slippage_series.get(1).unwrap().try_extract().unwrap();
 
