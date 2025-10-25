@@ -18,19 +18,25 @@ struct HawkBacktester {
     initial_value: Option<f64>,
     start_date: Option<Date>,
     slippage_bps: Option<f64>,
+    fee_model: Option<String>,
 }
 
 #[pymethods]
 impl HawkBacktester {
-    /// Create a new backtester with a specified initial portfolio value
-    /// and optional slippage cost in basis points.
+    /// Create a new backtester with a specified initial portfolio value,
+    /// optional slippage cost in basis points, and optional fee model.
+    ///
+    /// :param initial_value: Initial portfolio value in dollars
+    /// :param slippage_bps: Slippage cost in basis points (e.g., 1.0 = 0.01%)
+    /// :param fee_model: Fee model to use (e.g., "ibkr_pro_fixed" for IBKR Pro Fixed pricing)
     #[new]
-    #[pyo3(signature = (initial_value=None, slippage_bps=None))]
-    fn new(initial_value: Option<f64>, slippage_bps: Option<f64>) -> Self {
+    #[pyo3(signature = (initial_value=None, slippage_bps=None, fee_model=None))]
+    fn new(initial_value: Option<f64>, slippage_bps: Option<f64>, fee_model: Option<String>) -> Self {
         HawkBacktester {
             initial_value,
             start_date: None,
             slippage_bps: slippage_bps.map(|bps| bps.max(0.0)),
+            fee_model,
         }
     }
 
@@ -93,6 +99,7 @@ impl HawkBacktester {
             initial_value,
             start_date,
             slippage_bps,
+            fee_model: self.fee_model.clone(),
         };
 
         // Run the backtest and convert the result back to a Polars DataFrame
@@ -123,6 +130,7 @@ impl HawkBacktester {
         metrics_dict.set_item("portfolio_turnover", metrics.portfolio_turnover)?;
         metrics_dict.set_item("holding_period_years", metrics.holding_period_years)?;
         metrics_dict.set_item("cumulative_slippage_cost", metrics.cumulative_slippage_cost)?;
+        metrics_dict.set_item("cumulative_commission_cost", metrics.cumulative_commission_cost)?;
 
         // Simulation statistics
         metrics_dict.set_item("num_price_points", prices.len())?;

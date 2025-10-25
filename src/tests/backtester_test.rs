@@ -87,6 +87,7 @@ fn test_backtester_no_weight_event() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -161,6 +162,7 @@ fn test_backtester_with_weight_event() {
         initial_value: 1000.0,
         start_date: pd1.timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
@@ -229,6 +231,7 @@ fn test_multiple_weight_events() {
         initial_value: 1000.0,
         start_date: pd1.timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
@@ -268,6 +271,7 @@ fn test_dataframe_output() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest failed");
@@ -283,6 +287,7 @@ fn test_dataframe_output() {
         "drawdown",
         "volume_traded",
         "daily_slippage_cost",
+        "daily_commission_cost",
     ];
     assert_eq!(df.get_column_names(), expected_cols);
     assert_eq!(df.height(), prices.len());
@@ -368,6 +373,7 @@ fn test_backtester_with_zero_initial_value() {
         initial_value: 0.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -426,6 +432,7 @@ fn test_backtester_with_missing_prices() {
         initial_value: 1000.0,
         start_date: pd1.timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -463,6 +470,7 @@ fn test_weight_event_with_invalid_asset() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (_df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -536,6 +544,7 @@ fn test_leveraged_positions() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (results_df, positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -576,6 +585,7 @@ fn test_single_asset_high_leverage_negative_cash() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (results_df, positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -616,6 +626,7 @@ fn test_multiple_assets_combined_leverage_negative_cash() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (results_df, positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -661,6 +672,7 @@ fn test_mixed_long_short_leveraged_positions() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (results_df, positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -705,6 +717,7 @@ fn test_extreme_leverage_negative_cash() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (results_df, positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -747,6 +760,7 @@ fn test_short_position_returns() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (results_df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -835,6 +849,7 @@ fn test_mixed_long_short_portfolio() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (results_df, _positions_df, _weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -887,6 +902,7 @@ fn test_backtester_respects_start_date() {
         initial_value: 1000.0,
         start_date: start.date(),
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (df, positions_df, weights_df, _metrics) = backtester.run().expect("Backtest should run");
@@ -941,6 +957,7 @@ fn test_volume_traded() {
         initial_value: 1000.0,
         start_date: prices[0].timestamp,
         slippage_bps: 0.0,
+        fee_model: None,
     };
 
     let (results_df, _positions_df, _weights_df, metrics) = backtester.run().expect("Backtest should run");
@@ -1008,6 +1025,7 @@ fn test_slippage_cost() {
         initial_value,
         start_date: prices[0].timestamp,
         slippage_bps,
+        fee_model: None,
     };
 
     let (results_df, positions_df, _weights_df, metrics) =
