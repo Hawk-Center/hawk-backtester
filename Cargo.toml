@@ -1,6 +1,6 @@
 [package]
 name = "hawk_backtester"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 
 [lib]
@@ -11,5 +11,16 @@ crate-type = ["cdylib"]
 [dependencies]
 polars = { version = "0.46.0", features = ["csv", "dtype-datetime"] }
 time = { version = "0.3.39", features = ["formatting", "parsing"] }
-pyo3 = { version = "0.23.5", features = ["extension-module"] }
+pyo3 = { version = "0.23.5", features = ["extension-module", "abi3-py38"] }
 pyo3-polars = "0.20.0"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = true
+strip = true
+
+[profile.dev]
+opt-level = 1
+debug = true
+incremental = true
