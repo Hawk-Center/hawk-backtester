@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "hawk-backtester"
-version = "0.5.3"
+version = "0.5.4"
 description = "High-performance portfolio backtester written in Rust"
 authors = ["Charles Maloney <charles.c.maloney@gmail.com>"]
 readme = "README.md"
 packages = [{ include = "hawk_backtester", from = "python" }]
 
 [tool.poetry.dependencies]
-python = ">=3.8"
+python = ">=3.9,<3.13"
 maturin = "^1.4.0"
 polars = "==1.32.0"
 pytest = "^8.3.3"
@@ -22,19 +22,16 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "hawk_backtester"
-version = "0.5.3"
-requires-python = ">=3.8"
+name = "hawk-backtester"
+version = "0.5.4"
+requires-python = ">=3.9,<3.13"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
-]
-dependencies = [
-    "polars>=0.19.0",
+    "Programming Language :: Python :: 3.12",
 ]
 
 [tool.maturin]
